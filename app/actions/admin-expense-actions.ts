@@ -88,7 +88,8 @@ export async function getAdminExpenseAllocation(year: number, month: number) {
         const uprValue     = Number(s.uprValue);
         const earnedGross  = grossWritten - uprValue;
         const expectedLrPct = Number(paramsMap.get(s.branchNumber)?.expectedLrPct ?? 0);
-        return { branchNumber: s.branchNumber, earnedGross, expectedLrPct };
+        const uprRatio     = grossWritten > 0 ? uprValue / grossWritten : 0;
+        return { branchNumber: s.branchNumber, earnedGross, expectedLrPct, uprRatio };
       });
 
     const premiumExpense = expense?.premiumExpense ?? 0;

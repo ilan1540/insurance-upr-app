@@ -9,7 +9,8 @@ export function calculateActualPnL(actuals: any, uprData: any) {
   const incurredClaimsGross = actuals.paidClaims + (actuals.outstandingClaims + actuals.ibnr);
   
   // רווח חתמי בפועל
-  const actualProfit = earnedGross - agentCommEarned - incurredClaimsGross + (/* נתוני משנה */);
+  const reinsuranceResult = (actuals.claimsPaidRi ?? 0) + (actuals.reinsuranceComm ?? 0) - (actuals.reinsurancePremium ?? 0);
+  const actualProfit = earnedGross - agentCommEarned - incurredClaimsGross + reinsuranceResult;
 
   return {
     earnedGross,

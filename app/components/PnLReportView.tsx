@@ -15,7 +15,7 @@ export default function PnLReportView() {
     if (res.success) {
       setData(res);
     } else {
-      alert(res.message || res.error);
+      alert(res.error);
       setData(null);
     }
     setLoading(false);

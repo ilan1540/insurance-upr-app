@@ -68,32 +68,32 @@ export default function OperationsControl() {
         <UploadCard title="תחזית שנתית" subtitle="Params" icon="🎯" color="indigo"
           isLoading={loadingType === "תחזית"}
           onDownload={() => handleDownload("params")}
-          onUpload={(e) => handleUpload(e, uploadBranchParamsCSV, "תחזית")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadBranchParamsCSV, "תחזית")} />
 
         <UploadCard title="פרמיות אמת" subtitle="Premium Actuals" icon="💎" color="emerald"
           isLoading={loadingType === "פרמיות"}
           onDownload={() => handleDownload("premium-actuals")}
-          onUpload={(e) => handleUpload(e, uploadPremiumActualsCSV, "פרמיות")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadPremiumActualsCSV, "פרמיות")} />
 
         <UploadCard title="תביעות אמת" subtitle="Claims Actuals" icon="🩺" color="sky"
           isLoading={loadingType === "תביעות"}
           onDownload={() => handleDownload("claims-actuals")}
-          onUpload={(e) => handleUpload(e, uploadClaimsActualsCSV, "תביעות")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadClaimsActualsCSV, "תביעות")} />
 
         <UploadCard title="אקטואריה" subtitle="Reserves" icon="📑" color="amber"
           isLoading={loadingType === "אקטואריה"}
           onDownload={() => handleDownload("actuarial")}
-          onUpload={(e) => handleUpload(e, uploadActuarialCSV, "אקטואריה")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadActuarialCSV, "אקטואריה")} />
 
         <UploadCard title='הוצ׳ הנה"כ' subtitle="Admin Expenses" icon="🏢" color="rose"
           isLoading={loadingType === "הוצאות"}
           onDownload={() => handleDownload("admin-expense")}
-          onUpload={(e) => handleUpload(e, uploadAdminExpenseCSV, "הוצאות")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadAdminExpenseCSV, "הוצאות")} />
 
         <UploadCard title="ענפים וקיבוצים" subtitle="Branches" icon="🗂️" color="violet"
           isLoading={loadingType === "ענפים"}
           onDownload={() => handleDownload("branches")}
-          onUpload={(e) => handleUpload(e, uploadBranchesCSV, "ענפים")} />
+          onUpload={(e: React.ChangeEvent<HTMLInputElement>) => handleUpload(e, uploadBranchesCSV, "ענפים")} />
 
       </div>
     </div>

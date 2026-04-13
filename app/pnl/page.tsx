@@ -22,7 +22,7 @@ export default function PnLReportView() {
       setSimLrDelta(0);
       setSimPremiumFactor(100);
     } else {
-      alert(res.message || res.error);
+      alert(res.error);
       setRawData(null);
     }
     setLoading(false);

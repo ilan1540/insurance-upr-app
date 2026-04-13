@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { uploadBranchParamsCSV } from "@/app/actions/params-actions";
+import { uploadBranchParamsCSV } from "@/app/actions/data-actions";
 
 export default function BranchParamsUpload() {
   const [file, setFile] = useState<File | null>(null);
