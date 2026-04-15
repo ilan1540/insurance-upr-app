@@ -29,12 +29,15 @@ export async function uploadBranchParamsCSV(formData: FormData) {
       expectedLrPct:        parseFloat(row.expectedLrPct        || 0),
     }));
 
-    const years = [...new Set(data.map(d => d.year))];
-    await prisma.$transaction([
-      prisma.branchParameters.deleteMany({ where: { year: { in: years } } }),
-      prisma.branchParameters.createMany({ data }),
-    ]);
-    return { success: true, count: data.length };
+    // נקה כפילויות — שמור רק את השורה האחרונה לכל (year, branchNumber)
+    const dedupMap = new Map<string, typeof data[0]>();
+    for (const row of data) dedupMap.set(`${row.year}-${row.branchNumber}`, row);
+    const deduped = Array.from(dedupMap.values());
+
+    const years = [...new Set(deduped.map(d => d.year))];
+    await prisma.branchParameters.deleteMany({ where: { year: { in: years } } });
+    await prisma.branchParameters.createMany({ data: deduped });
+    return { success: true, count: deduped.length };
   } catch (e: any) {
     return { success: false, error: "שגיאת תחזית: " + e.message };
   }
@@ -70,16 +73,61 @@ export async function uploadPremiumActualsCSV(formData: FormData) {
 
     if (data.length === 0) return { success: false, error: "לא נמצאו שורות תקינות — ודא שקיימות עמודות startDate ו-endDate" };
 
-    // מחיקה לפי כל השנים+חודשים שמופיעים בקובץ (לא רק השורה הראשונה)
-    const periods = [...new Set(data.map(d => `${d.year}-${d.month}`))];
+    // נקה כפילויות — שמור רק את השורה האחרונה לכל (year, month, branchNumber)
+    const dedupMap = new Map<string, (typeof data)[0]>();
+    for (const row of data) dedupMap.set(`${row.year}-${row.month}-${row.branchNumber}`, row);
+    const deduped = Array.from(dedupMap.values());
+
+    const periods = [...new Set(deduped.map(d => `${d.year}-${d.month}`))];
     for (const p of periods) {
       const [y, m] = p.split('-').map(Number);
       await prisma.premiumActuals.deleteMany({ where: { year: y, month: m } });
     }
-    await prisma.premiumActuals.createMany({ data });
-    return { success: true, count: data.length };
+    await prisma.premiumActuals.createMany({ data: deduped });
+    return { success: true, count: deduped.length };
   } catch (e: any) {
     return { success: false, error: "שגיאת פרמיות אמת: " + e.message };
+  }
+}
+
+// 2b. יצירת פרמיות תחזית חודשיות מפרמטרי תקציב שנתיים
+// מחלק expectedGrossPremium ל-12 חודשים שווים, startDate = תחילת חודש, endDate = תחילת אותו חודש שנה הבאה
+export async function generateMonthlyBudgetActuals(year: number): Promise<{
+  success: boolean; count?: number; branches?: number; error?: string;
+}> {
+  try {
+    const params = await prisma.branchParameters.findMany({ where: { year } });
+    if (params.length === 0)
+      return { success: false, error: `לא נמצאו פרמטרי תחזית לשנת ${year} — יש לקלוט קובץ תחזית תחילה` };
+
+    const data = [];
+    for (const p of params) {
+      const monthly = Number(p.expectedGrossPremium) / 12;
+      for (let m = 1; m <= 12; m++) {
+        const startDate = new Date(year, m - 1, 1, 12, 0, 0);
+        const endDate   = new Date(year + 1, m - 1, 1, 12, 0, 0);
+        const riPremium = monthly * (Number(p.reinsurancePct) / 100);
+        data.push({
+          year,
+          month:              m,
+          branchNumber:       p.branchNumber,
+          startDate,
+          endDate,
+          grossPremium:       monthly,
+          agentComm:          monthly * (Number(p.agentCommPct) / 100),
+          reinsurancePremium: riPremium,
+          reinsuranceComm:    riPremium * (Number(p.reinsuranceCommPct) / 100),
+        });
+      }
+    }
+
+    // מחיקה וקליטה מחדש של כל חודשי השנה
+    await prisma.premiumActuals.deleteMany({ where: { year } });
+    await prisma.premiumActuals.createMany({ data });
+
+    return { success: true, count: data.length, branches: params.length };
+  } catch (e: any) {
+    return { success: false, error: "שגיאה ביצירת תחזית חודשית: " + e.message };
   }
 }
 

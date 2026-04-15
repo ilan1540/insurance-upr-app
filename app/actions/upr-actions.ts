@@ -57,10 +57,8 @@ export async function uploadPolicies(formData: FormData) {
       ducNet:          d.totalDuc,
     }));
 
-    await prisma.$transaction([
-      prisma.uprSnapshot.deleteMany({ where: { year, period: month } }),
-      prisma.uprSnapshot.createMany({ data: snapshotData }),
-    ]);
+    await prisma.uprSnapshot.deleteMany({ where: { year, period: month } });
+    await prisma.uprSnapshot.createMany({ data: snapshotData });
 
     return { success: true, count: snapshotData.length };
   } catch (error: any) {
@@ -160,24 +158,22 @@ export async function runFullUprCalculation(targetDate: string) {
     const allocations = allocateAdminExpenses(allocationInputs, premiumExpense, claimsExpense);
 
     // ---------- שמירה ב-DB ----------
-    await prisma.$transaction([
-      prisma.uprSnapshot.deleteMany({ where: { year, period: month } }),
-      prisma.uprSnapshot.createMany({ data: snapshotData }),
-      prisma.adminExpenseAllocation.deleteMany({ where: { year, month } }),
-      ...(allocations.length > 0
-        ? [prisma.adminExpenseAllocation.createMany({
-            data: allocations.map(a => ({
-              year, month,
-              branchNumber:       a.branchNumber,
-              premiumExpenseShare: a.premiumExpenseShare,
-              claimsExpenseShare:  a.claimsExpenseShare,
-              totalExpenseShare:   a.totalExpenseShare,
-              recognizedExpense:   a.recognizedExpense,
-              deferredExpense:     a.deferredExpense,
-            }))
-          })]
-        : [])
-    ]);
+    await prisma.uprSnapshot.deleteMany({ where: { year, period: month } });
+    await prisma.uprSnapshot.createMany({ data: snapshotData });
+    await prisma.adminExpenseAllocation.deleteMany({ where: { year, month } });
+    if (allocations.length > 0) {
+      await prisma.adminExpenseAllocation.createMany({
+        data: allocations.map(a => ({
+          year, month,
+          branchNumber:        a.branchNumber,
+          premiumExpenseShare: a.premiumExpenseShare,
+          claimsExpenseShare:  a.claimsExpenseShare,
+          totalExpenseShare:   a.totalExpenseShare,
+          recognizedExpense:   a.recognizedExpense,
+          deferredExpense:     a.deferredExpense,
+        })),
+      });
+    }
 
     const totalUpr    = snapshotData.reduce((s, r) => s + r.uprValue, 0);
     const totalDucNet = snapshotData.reduce((s, r) => s + r.ducNet,  0);

@@ -8,14 +8,51 @@ const MONTHLY_STEPS = [
   {
     step: 1,
     phase: "קלט",
+    icon: "🎯",
+    color: "indigo",
+    title: "טעינת תחזית שנתית",
+    href: "/upload",
+    table: "BranchParameters",
+    template: "Template_Budget_Params.csv",
+    columns: "year, branchNumber, expectedGrossPremium, agentCommPct, reinsurancePct, reinsuranceCommPct, expectedLrPct",
+    notes: [
+      "expectedGrossPremium — פרמיה שנתית כוללת לכל ענף (לא חודשית)",
+      "מתבצע בתחילת שנה — פעם אחת לכל שנה",
+      "משפיע על חישוב DUC, הקצאת הנה\"כ, דוח P&L וסימולציה",
+    ],
+    validation: "ודא שסך הפרמיה החזויה תואמת את תקציב השנה",
+  },
+  {
+    step: 2,
+    phase: "קלט",
+    icon: "📅",
+    color: "violet",
+    title: "יצירת תחזית חודשית אוטומטית",
+    href: "/upload",
+    table: "PremiumActuals (נוצר אוטומטית)",
+    template: null,
+    columns: null,
+    notes: [
+      "לחץ על 'צור תחזית חודשית' במרכז הקליטה לאחר טעינת התחזית",
+      "מחלק expectedGrossPremium ÷ 12 לכל ענף",
+      "startDate = 01/MM/YYYY, endDate = 01/MM/YYYY+1 לכל חודש",
+      "עמלות וביטוח משנה מחושבים אוטומטית לפי אחוזי הפרמטרים",
+      "⚠ מחיקה וכתיבה מחדש של כל פרמיות האמת לאותה שנה",
+    ],
+    validation: "לאחר היצירה: ודא שקיימות 12 שורות לכל ענף בלשונית אמת",
+  },
+  {
+    step: 3,
+    phase: "קלט",
     icon: "💎",
     color: "emerald",
-    title: "טעינת פרמיות אמת",
+    title: "טעינת פרמיות אמת (לחלופין)",
     href: "/upload",
     table: "PremiumActuals",
     template: "Template_Premium_Actuals.csv",
     columns: "year, month, branchNumber, startDate, endDate, grossPremium, agentComm, reinsurancePremium, reinsuranceComm",
     notes: [
+      "אם יש נתוני אמת מפורטים — טען במקום שלב 2",
       "startDate / endDate — תחילה וסוף תקופת הביטוח (לחישוב UPR Pro-Rata)",
       "פורמט תאריך נתמך: YYYY-MM-DD או DD/MM/YYYY",
       "שורה אחת לכל ענף לכל חודש",
@@ -23,7 +60,7 @@ const MONTHLY_STEPS = [
     validation: "ודא שקיימים נתונים לכל 12 ענפים",
   },
   {
-    step: 2,
+    step: 4,
     phase: "קלט",
     icon: "🩺",
     color: "sky",
@@ -40,7 +77,7 @@ const MONTHLY_STEPS = [
     validation: "ודא כיסוי לכל השנות חיתום הרלוונטיות",
   },
   {
-    step: 3,
+    step: 5,
     phase: "קלט",
     icon: "🏢",
     color: "rose",
@@ -57,7 +94,7 @@ const MONTHLY_STEPS = [
     validation: "ודא פיצול נכון בין שני סוגי ההוצאות",
   },
   {
-    step: 4,
+    step: 6,
     phase: "חישוב",
     icon: "⚙️",
     color: "indigo",
@@ -75,7 +112,7 @@ const MONTHLY_STEPS = [
     validation: "ודא שהתוצאה כוללת את כל הענפים ו-UPR > 0",
   },
   {
-    step: 5,
+    step: 7,
     phase: "דוחות",
     icon: "📊",
     color: "violet",
@@ -92,24 +129,25 @@ const MONTHLY_STEPS = [
     validation: "יחס UPR צפוי: בסביבות 50%-80% לפוליסות שנתיות",
   },
   {
-    step: 6,
+    step: 8,
     phase: "דוחות",
     icon: "💰",
     color: "amber",
-    title: "הפקת דוח P&L",
+    title: "הפקת דוח P&L וסימולציה",
     href: "/pnl",
     table: "UprSnapshot + BranchParameters",
     template: null,
     columns: null,
     notes: [
-      "דוח תחזיתי — מבוסס על פרמטרי תקציב",
-      "כולל: פרמיה שהורווחה, עמלות, ביטוח משנה, תביעות צפויות",
-      "השווה לתקציב השנתי",
+      "דוח תחזיתי — מבוסס על נתוני UPR ופרמטרי תקציב",
+      "כולל: פרמיה שהורווחה, עמלת סוכן, ביטוח משנה, תביעות צפויות",
+      "סימולטור What-If עם 5 sliders: LR%, נפח פרמיה, עמלת סוכן%, פרמיה ב\"מ%, עמלת ב\"מ%",
+      "כל הsliders פועלים בזמן אמת ללא שליפה חוזרת מהשרת",
     ],
-    validation: "בדוק שרווחיות ענפית סבירה ביחס ל-LR יעד",
+    validation: "בדוק שרווחיות ענפית סבירה ביחס ל-LR יעד; נסה תרחישי קיצון בסימולטור",
   },
   {
-    step: 7,
+    step: 9,
     phase: "בקרה",
     icon: "🔍",
     color: "slate",
@@ -283,12 +321,12 @@ export default function WorkflowGuide() {
                 onClick={() => setExpanded(isOpen ? null : idx)}
               >
                 {/* מספר שלב */}
-                <span className={`flex-shrink-0 w-9 h-9 rounded-full ${c.step} text-white font-black text-sm flex items-center justify-center`}>
+                <span className={`shrink-0 w-9 h-9 rounded-full ${c.step} text-white font-black text-sm flex items-center justify-center`}>
                   {s.step}
                 </span>
 
                 {/* אייקון */}
-                <span className="text-2xl flex-shrink-0">{s.icon}</span>
+                <span className="text-2xl shrink-0">{s.icon}</span>
 
                 {/* כותרת + תגיות */}
                 <div className="flex-1 flex flex-wrap items-center gap-2">
@@ -340,7 +378,7 @@ export default function WorkflowGuide() {
 
                   {/* בדיקת תקינות */}
                   <div className="flex gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                    <span className="text-amber-500 flex-shrink-0">✓</span>
+                    <span className="text-amber-500 shrink-0">✓</span>
                     <p className="text-sm text-amber-800 font-medium">{s.validation}</p>
                   </div>
 

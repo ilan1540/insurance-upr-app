@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { getBranchComparisonReport } from "@/app/actions/pl-actionsV";
 import { getAllBranches } from "@/app/actions/branch-actions";
+import { getAvailableYears } from "@/app/actions/report-actions";
 
 type Mode = "monthly" | "cumulative";
 
@@ -115,26 +116,28 @@ function DrillDownTable({ data, label }: { data: any; label: string }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BranchVerticalPnl() {
-  const [branches, setBranches] = useState<any[]>([]);
-  const [branch, setBranch]     = useState<number | null>(null);
-  const [mode, setMode]         = useState<Mode>("monthly");
-  const [periodA, setPeriodA]   = useState({ year: 2025, month: 3 });
-  const [periodB, setPeriodB]   = useState({ year: 2025, month: 1 });
-  const [report, setReport]     = useState<any>(null);
-  const [loading, setLoading]   = useState(false);
-  const [drillA, setDrillA]     = useState(false);
-  const [drillB, setDrillB]     = useState(false);
+  const [branches, setBranches]       = useState<any[]>([]);
+  const [branch, setBranch]           = useState<number>(0);   // 0 = כל הענפים
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [mode, setMode]               = useState<Mode>("monthly");
+  const [periodA, setPeriodA]         = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
+  const [periodB, setPeriodB]         = useState({ year: new Date().getFullYear() - 1, month: new Date().getMonth() + 1 });
+  const [report, setReport]           = useState<any>(null);
+  const [loading, setLoading]         = useState(false);
+  const [drillA, setDrillA]           = useState(false);
+  const [drillB, setDrillB]           = useState(false);
 
   useEffect(() => {
-    getAllBranches().then(res => {
-      if (res.branches?.length) { setBranches(res.branches); setBranch(res.branches[0].branchNumber); }
-    });
+    getAllBranches().then(res => { if (res.branches?.length) setBranches(res.branches); });
+    getAvailableYears().then(years => setAvailableYears(years));
   }, []);
 
   const selectedBranch = branches.find(b => b.branchNumber === branch);
+  const branchLabel = branch === 0
+    ? "כל הענפים"
+    : selectedBranch ? `${selectedBranch.branchName} — ${selectedBranch.groupName}` : "";
 
   const loadReport = async () => {
-    if (!branch) return;
     setLoading(true); setReport(null); setDrillA(false); setDrillB(false);
     const res = await getBranchComparisonReport(branch, periodA, periodB, mode);
     if (res.success) setReport(res);
@@ -156,7 +159,7 @@ export default function BranchVerticalPnl() {
         <span className="p-2.5 bg-blue-600 text-white rounded-xl text-xl">📊</span>
         <div>
           <h3 className="text-2xl font-black text-slate-800">ניתוח אנכי והשוואתי</h3>
-          {selectedBranch && <p className="text-slate-500 text-sm">{selectedBranch.branchName} — {selectedBranch.groupName}</p>}
+          {branchLabel && <p className="text-slate-500 text-sm">{branchLabel}</p>}
         </div>
       </div>
 
@@ -166,8 +169,9 @@ export default function BranchVerticalPnl() {
         {/* ענף */}
         <div>
           <label className="text-xs font-bold text-slate-500 block mb-1.5">ענף</label>
-          <select value={branch ?? ""} onChange={e => { setBranch(Number(e.target.value)); setReport(null); }}
+          <select value={branch} onChange={e => { setBranch(Number(e.target.value)); setReport(null); }}
             className="w-full p-3 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500">
+            <option value={0}>כל הענפים (סיכום כולל)</option>
             {branches.map(b => <option key={b.branchNumber} value={b.branchNumber}>{b.branchNumber} — {b.branchName}</option>)}
           </select>
         </div>
@@ -198,7 +202,7 @@ export default function BranchVerticalPnl() {
               <div className="flex gap-2">
                 <select value={p.year} onChange={e => set({ ...p, year: Number(e.target.value) })}
                   className="w-24 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none">
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                  {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
                 <select value={p.month} onChange={e => set({ ...p, month: Number(e.target.value) })}
                   className="flex-1 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none">
@@ -209,7 +213,7 @@ export default function BranchVerticalPnl() {
           ))}
         </div>
 
-        <button onClick={loadReport} disabled={loading || !branch}
+        <button onClick={loadReport} disabled={loading}
           className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
           {loading ? "מחשב..." : "הצג השוואה"}
         </button>

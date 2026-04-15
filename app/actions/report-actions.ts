@@ -1,13 +1,33 @@
 "use server";
 import { prisma } from "@/lib/prisma";
 
-export async function getAvailableYears(): Promise<number[]> {
+// שנים שיש בהן פרמטרי תחזית (לשימוש ב-P&L שמבוסס על branchParameters בלבד)
+export async function getParamYears(): Promise<number[]> {
   const rows = await prisma.branchParameters.findMany({
     select: { year: true },
     distinct: ["year"],
     orderBy: { year: "desc" },
   });
   return rows.map(r => r.year);
+}
+
+// שנים שיש בהן נתונים בכל אחת מהטבלאות (לשימוש במרכז בקרת נתונים)
+export async function getAvailableYears(): Promise<number[]> {
+  const [paramRows, premiumRows] = await Promise.all([
+    prisma.branchParameters.findMany({
+      select: { year: true },
+      distinct: ["year"],
+    }),
+    prisma.premiumActuals.findMany({
+      select: { year: true },
+      distinct: ["year"],
+    }),
+  ]);
+  const allYears = new Set([
+    ...paramRows.map(r => r.year),
+    ...premiumRows.map(r => r.year),
+  ]);
+  return Array.from(allYears).sort((a, b) => b - a);
 }
 
 export async function getRawData(

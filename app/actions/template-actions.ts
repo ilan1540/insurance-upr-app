@@ -1,7 +1,7 @@
 "use server";
 
 export async function downloadTemplate(
-  type: 'params' | 'premium-actuals' | 'claims-actuals' | 'actuarial' | 'admin-expense' | 'branches'
+  type: 'params' | 'premium-actuals' | 'claims-actuals' | 'actuarial' | 'admin-expense' | 'branches' | 'budget-monthly-update'
 ) {
   let headers = "";
   let fileName = "";
@@ -37,6 +37,21 @@ export async function downloadTemplate(
     case 'branches':
       headers = "branchNumber,branchName,groupCode,groupName\n1,רכב חובה,CAR,ענפי רכב\n2,רכב רכוש,CAR,ענפי רכב\n3,אש ורכוש,PROPERTY,ענפי רכוש\n4,תאונות אישיות,ACCIDENT,ענפי תאונות";
       fileName = "Template_Branches.csv";
+      break;
+
+    case 'budget-monthly-update':
+      // עדכון תחזית לחודש ספציפי — אותו מבנה כמו premium-actuals, שורה לכל ענף
+      // startDate = תחילת החודש, endDate = תחילת אותו חודש שנה הבאה
+      headers = [
+        "year,month,branchNumber,startDate,endDate,grossPremium,agentComm,reinsurancePremium,reinsuranceComm",
+        "2026,3,100,2026-03-01,2027-03-01,22000,800,9240,318",
+        "2026,3,150,2026-03-01,2027-03-01,18500,450,13135,453",
+        "2026,3,200,2026-03-01,2027-03-01,27000,550,25029,861",
+        "2026,3,210,2026-03-01,2027-03-01,31000,1130,25430,117",
+        "2026,3,221,2026-03-01,2027-03-01,12000,340,3073,145",
+        "2026,3,225,2026-03-01,2027-03-01,22303,83,17667,608",
+      ].join("\n");
+      fileName = "Template_Budget_Monthly_Update.csv";
       break;
   }
 

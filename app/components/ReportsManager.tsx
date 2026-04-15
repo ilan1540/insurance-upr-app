@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getReportData } from "@/app/actions/report-actions";
+import { getReportData, getAvailableYears } from "@/app/actions/report-actions";
 import { getAllBranches } from "@/app/actions/branch-actions";
 
 type TabType = 'params' | 'premium-actuals' | 'claims-actuals' | 'actuarial' | 'admin-expense' | 'branches';
@@ -15,19 +15,28 @@ const TABS: { key: TabType; label: string; icon: string; color: string }[] = [
 ];
 
 export default function ReportsManager() {
-  const [activeTab, setActiveTab] = useState<TabType>('params');
-  const [selectedYear, setSelectedYear] = useState(2026);
+  const [activeTab, setActiveTab]     = useState<TabType>('params');
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [selectedYear, setSelectedYear]     = useState<number | null>(null);
   const [data, setData]       = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  useEffect(() => {
+    getAvailableYears().then(years => {
+      setAvailableYears(years);
+      if (years.length > 0 && selectedYear === null) setSelectedYear(years[0]);
+    });
+  }, []);
+
   const loadData = async () => {
+    if (activeTab !== 'branches' && selectedYear === null) return;
     setLoading(true);
     if (activeTab === 'branches') {
       const res = await getAllBranches();
       setData(res.branches || []);
     } else {
-      const result = await getReportData(activeTab, selectedYear);
+      const result = await getReportData(activeTab, selectedYear!);
       setData(result || []);
     }
     setLoading(false);
@@ -54,10 +63,10 @@ export default function ReportsManager() {
             <h1 className="text-3xl font-black text-slate-900">מרכז בקרת נתונים</h1>
             <p className="text-slate-500">תצוגה מלאה של כל שדות הקלט ב-Database</p>
           </div>
-          {!noYear && (
+          {!noYear && availableYears.length > 0 && (
             <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-3">
               <span className="text-sm font-bold text-slate-600 mr-2">שנה:</span>
-              {[2024, 2025, 2026].map(y => (
+              {availableYears.map(y => (
                 <button key={y} onClick={() => setSelectedYear(y)}
                   className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                     selectedYear === y ? "bg-indigo-600 text-white" : "text-slate-400 hover:bg-slate-50"

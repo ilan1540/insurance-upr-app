@@ -9,7 +9,7 @@ export default function AboutSystem() {
       path: "app/actions/",
       files: [
         { name: "branch-actions.ts", desc: "קליטת ענפים, שמות וקיבוצים לצורך דיווח" },
-        { name: "data-actions.ts", desc: "קליטת תקציב, נתוני אמת ואקטואריה (CSV)" },
+        { name: "data-actions.ts", desc: "קליטת תקציב, נתוני אמת ואקטואריה (CSV) + יצירת תחזית חודשית אוטומטית מ-BranchParameters" },
         { name: "admin-expense-actions.ts", desc: "קליטת הוצאות הנה\"כ + הקצאה לענפים לפי IFRS17" },
         { name: "upr-actions.ts", desc: "חישוב UPR/DUC לפי פוליסות + ארכיון snapshots" },
         { name: "template-actions.ts", desc: "יצירת והורדת קבצי CSV לדוגמה לכל סוגי הקלט" }
@@ -19,9 +19,9 @@ export default function AboutSystem() {
       area: "רכיבי ממשק (Components)",
       path: "app/components/",
       files: [
-        { name: "OperationsDashboard.tsx", desc: "מרכז קליטת קבצים — 5 כרטיסי CSV" },
-        { name: "ReportsManager.tsx", desc: "מרכז בקרת נתונים — 5 לשוניות תצוגה" },
-        { name: "PnLReportView.tsx", desc: "סימולטור P&L חזוי לפי ענף ותקופה" },
+        { name: "OperationsDashboard.tsx", desc: "מרכז קליטת קבצים — 6 כרטיסי CSV + כפתור יצירת תחזית חודשית אוטומטית" },
+        { name: "ReportsManager.tsx", desc: "מרכז בקרת נתונים — לשוניות תצוגה לכל סוגי הנתונים" },
+        { name: "PnLReportView.tsx", desc: "סימולטור P&L חזוי — 5 sliders: LR, נפח פרמיה, עמלת סוכן, פרמיה ב\"מ, עמלת ב\"מ" },
         { name: "AdminExpenseInput.tsx", desc: "קלט הוצאות הנה\"כ + טבלת הקצאה לענפים" },
         { name: "AboutSystem.tsx", desc: "דף תיעוד והדרכה (דף זה)" }
       ]
@@ -52,8 +52,8 @@ export default function AboutSystem() {
     {
       icon: "🎯", name: "Template_Budget_Params.csv",
       cols: "year, branchNumber, expectedGrossPremium, agentCommPct, reinsurancePct, reinsuranceCommPct, expectedLrPct",
-      desc: "תקציב שנתי — נטען פעם אחת לכל שנה",
-      note: ""
+      desc: "תקציב שנתי — נטען פעם אחת לכל שנה. expectedGrossPremium הוא סכום שנתי.",
+      note: "ℹ️ לאחר הקליטה: לחץ 'צור תחזית חודשית' כדי לחלק ל-12 חודשים שווים עם תאריכי ביטוח אוטומטיים"
     },
     {
       icon: "💎", name: "Template_Premium_Actuals.csv",

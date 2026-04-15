@@ -209,7 +209,71 @@ async function fetchCumulativeData(branchNumber: number, y: number, toMonth: num
 }
 
 // ---------------------------------------------------------------------------
+// סיכום נתוני ענפים מרובים לשורה אחת
+// ---------------------------------------------------------------------------
+function sumBranchData(results: any[]) {
+  const sum = (key: string) => results.reduce((s, r) => s + (r[key] ?? 0), 0);
+
+  const grossPremium    = sum("grossPremium");
+  const uprClosing      = sum("uprClosing");
+  const uprRatio        = grossPremium > 0 ? uprClosing / grossPremium : 0;
+
+  const claimsDetail = {
+    hasData:           results.some(r => r.claimsDetail?.hasData),
+    claimsPaidGross:   results.reduce((s, r) => s + (r.claimsDetail?.claimsPaidGross   ?? 0), 0),
+    claimsPaidRi:      results.reduce((s, r) => s + (r.claimsDetail?.claimsPaidRi      ?? 0), 0),
+    outstandingGross:  results.reduce((s, r) => s + (r.claimsDetail?.outstandingGross  ?? 0), 0),
+    outstandingRi:     results.reduce((s, r) => s + (r.claimsDetail?.outstandingRi     ?? 0), 0),
+    ibnrGross:         results.reduce((s, r) => s + (r.claimsDetail?.ibnrGross         ?? 0), 0),
+    ibnrRi:            results.reduce((s, r) => s + (r.claimsDetail?.ibnrRi            ?? 0), 0),
+    actuarialEstGross: results.reduce((s, r) => s + (r.claimsDetail?.actuarialEstGross ?? 0), 0),
+    actuarialEstRi:    results.reduce((s, r) => s + (r.claimsDetail?.actuarialEstRi    ?? 0), 0),
+  };
+
+  // monthly breakdown — סיכום לפי חודש (רלוונטי למצב YTD)
+  const monthlyMap = new Map<number, any>();
+  for (const r of results) {
+    for (const mb of r.monthlyBreakdown ?? []) {
+      const cur = monthlyMap.get(mb.month) ?? { month: mb.month, grossPremium: 0, agentComm: 0, riPremium: 0, riComm: 0 };
+      monthlyMap.set(mb.month, {
+        month:        mb.month,
+        grossPremium: cur.grossPremium + mb.grossPremium,
+        agentComm:    cur.agentComm    + mb.agentComm,
+        riPremium:    cur.riPremium    + mb.riPremium,
+        riComm:       cur.riComm       + mb.riComm,
+      });
+    }
+  }
+
+  return {
+    grossPremium,
+    uprOpening:      sum("uprOpening"),
+    uprClosing,
+    earnedPremium:   sum("earnedPremium"),
+    agentComm:       sum("agentComm"),
+    reinsuranceCost: sum("reinsuranceCost"),
+    claimsGross:     sum("claimsGross"),
+    claimsRi:        sum("claimsRi"),
+    claimsNet:       sum("claimsNet"),
+    claimsDetail,
+    uprRatio,
+    dacClosing:      sum("dacClosing"),
+    dacOpening:      sum("dacOpening"),
+    riDeferredClose: sum("riDeferredClose"),
+    riDeferredOpen:  sum("riDeferredOpen"),
+    ducNetClosing:   sum("ducNetClosing"),
+    ducNetOpening:   sum("ducNetOpening"),
+    agentCommPaid:   sum("agentCommPaid"),
+    riPremiumPaid:   sum("riPremiumPaid"),
+    riCommReceived:  sum("riCommReceived"),
+    monthlyBreakdown: Array.from(monthlyMap.values()).sort((a, b) => a.month - b.month),
+    params: {},
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public action
+// branchNumber === 0  →  כל הענפים (סיכום כולל)
 // ---------------------------------------------------------------------------
 export async function getBranchComparisonReport(
   branchNumber: number,
@@ -218,6 +282,30 @@ export async function getBranchComparisonReport(
   mode: "monthly" | "cumulative" = "monthly"
 ) {
   try {
+    if (branchNumber === 0) {
+      // שלוף את כל מספרי הענפים
+      const allBranches = await prisma.premiumActuals.findMany({
+        select: { branchNumber: true },
+        distinct: ["branchNumber"],
+      });
+      const nums = allBranches.map(b => b.branchNumber);
+
+      const [resultsA, resultsB] = await Promise.all([
+        Promise.all(nums.map(bn =>
+          mode === "cumulative"
+            ? fetchCumulativeData(bn, periodA.year, periodA.month)
+            : fetchPeriodData(bn, periodA.year, periodA.month)
+        )),
+        Promise.all(nums.map(bn =>
+          mode === "cumulative"
+            ? fetchCumulativeData(bn, periodB.year, periodB.month)
+            : fetchPeriodData(bn, periodB.year, periodB.month)
+        )),
+      ]);
+
+      return { success: true, dataA: sumBranchData(resultsA), dataB: sumBranchData(resultsB), mode };
+    }
+
     const [dataA, dataB] = await Promise.all([
       mode === "cumulative"
         ? fetchCumulativeData(branchNumber, periodA.year, periodA.month)
