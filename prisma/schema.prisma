@@ -27,45 +27,45 @@ model Policy {
 
 // טבלה לאחסון UPR, DUC ופרמיה מקורית לכל ענף ותקופה
 model UprSnapshot {
-  id              String   @id @default(cuid())
-  year            Int
-  period          Int
-  periodType      String   @default("MONTHLY")
-  branchNumber    Int
+  id           String @id @default(cuid())
+  year         Int
+  period       Int
+  periodType   String @default("MONTHLY")
+  branchNumber Int
 
   // פרמיה כתובה ברוטו
-  originalPremium Decimal  @default(0) @db.Decimal(15, 2)
+  originalPremium Decimal @default(0) @db.Decimal(15, 2)
 
   // UPR — עתודת פרמיה לא מופקעת
-  uprValue        Decimal  @db.Decimal(15, 2)
+  uprValue Decimal @db.Decimal(15, 2)
 
   // DUC — הוצאות רכישה נדחות (IFRS17 PAA)
-  dacGross        Decimal  @default(0) @db.Decimal(15, 2) // עמלת סוכן נדחית (נכס)
-  deferredRIComm  Decimal  @default(0) @db.Decimal(15, 2) // עמלת ב"מ נדחית (הכנסה נדחית)
-  ducNet          Decimal  @default(0) @db.Decimal(15, 2) // DUC נטו = DAC - עמלת ב"מ נדחית
+  dacGross       Decimal @default(0) @db.Decimal(15, 2) // עמלת סוכן נדחית (נכס)
+  deferredRIComm Decimal @default(0) @db.Decimal(15, 2) // עמלת ב"מ נדחית (הכנסה נדחית)
+  ducNet         Decimal @default(0) @db.Decimal(15, 2) // DUC נטו = DAC - עמלת ב"מ נדחית
 
-  calculatedAt    DateTime @default(now())
+  calculatedAt DateTime @default(now())
 
   @@unique([year, period, periodType, branchNumber])
 }
 
 // הקצאת הוצאות הנה"כ לענפים — נשמרת בכל חישוב UPR
 model AdminExpenseAllocation {
-  id                  String   @id @default(cuid())
-  year                Int
-  month               Int
-  branchNumber        Int
+  id           String @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
 
   // הקצאה מחושבת
-  premiumExpenseShare Float    // חלק מהוצאות הפרמיה (לפי משקל פרמיה שהורווחה)
-  claimsExpenseShare  Float    // חלק מהוצאות התביעות (לפי משקל תביעות צפויות)
-  totalExpenseShare   Float    // סה"כ הוצאות לענף
+  premiumExpenseShare Float // חלק מהוצאות הפרמיה (לפי משקל פרמיה שהורווחה)
+  claimsExpenseShare  Float // חלק מהוצאות התביעות (לפי משקל תביעות צפויות)
+  totalExpenseShare   Float // סה"כ הוצאות לענף
 
   // הכרה בהוצאות — בדומה לפרמיה (IFRS17)
-  recognizedExpense   Float    // הוצאה שהוכרה = totalExpenseShare × (1 − uprRatio)
-  deferredExpense     Float    // הוצאה נדחית  = totalExpenseShare × uprRatio
+  recognizedExpense Float // הוצאה שהוכרה = totalExpenseShare × (1 − uprRatio)
+  deferredExpense   Float // הוצאה נדחית  = totalExpenseShare × uprRatio
 
-  updatedAt           DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([year, month, branchNumber])
 }
@@ -93,10 +93,10 @@ model PremiumActuals {
   branchNumber       Int
   startDate          DateTime // תחילת תקופת הביטוח (לחישוב Pro-Rata)
   endDate            DateTime // סוף תקופת הביטוח   (לחישוב Pro-Rata)
-  grossPremium       Float    // פרמיה ברוטו
-  agentComm          Float    // עמלת סוכן ששולמה
-  reinsurancePremium Float    // פרמיה למבטח משנה
-  reinsuranceComm    Float    // עמלה שהתקבלה ממבטח משנה
+  grossPremium       Float // פרמיה ברוטו
+  agentComm          Float // עמלת סוכן ששולמה
+  reinsurancePremium Float // פרמיה למבטח משנה
+  reinsuranceComm    Float // עמלה שהתקבלה ממבטח משנה
   updatedAt          DateTime @updatedAt
 
   @@unique([year, month, branchNumber])
@@ -105,13 +105,13 @@ model PremiumActuals {
 // תביעות אמת לפי ענף, שנת חיתום ושנת נזק
 model ClaimsActuals {
   id               String   @id @default(cuid())
-  year             Int      // שנת דיווח (חודש הקליטה)
-  month            Int      // חודש דיווח
+  year             Int // שנת דיווח (חודש הקליטה)
+  month            Int // חודש דיווח
   branchNumber     Int
-  underwritingYear Int      // שנת חיתום (Underwriting Year)
-  lossYear         Int      // שנת נזק (Loss Year / Accident Year)
-  claimsPaidGross  Float    // תביעות ששולמו ברוטו
-  claimsPaidRi     Float    // חלק מבטח משנה בתביעות ששולמו
+  underwritingYear Int // שנת חיתום (Underwriting Year)
+  lossYear         Int // שנת נזק (Loss Year / Accident Year)
+  claimsPaidGross  Float // תביעות ששולמו ברוטו
+  claimsPaidRi     Float // חלק מבטח משנה בתביעות ששולמו
   updatedAt        DateTime @updatedAt
 
   @@unique([year, month, branchNumber, underwritingYear, lossYear])
@@ -119,7 +119,7 @@ model ClaimsActuals {
 
 // טבלת ענפים — שמות וקיבוצים לצורך דיווח
 model Branch {
-  branchNumber Int    @id
+  branchNumber Int      @id
   branchName   String // שם הענף (למשל: "רכב חובה")
   groupCode    String // קוד קיבוץ (למשל: "CAR")
   groupName    String // שם הקיבוץ (למשל: "ענפי רכב")
@@ -131,8 +131,8 @@ model AdminExpense {
   id             String   @id @default(cuid())
   year           Int
   month          Int
-  premiumExpense Float    // הוצאות המיוחסות לפרמיה (יוקצו לפי פרמיה שהורווחה)
-  claimsExpense  Float    // הוצאות המיוחסות לתביעות (יוקצו לפי תביעות צפויות)
+  premiumExpense Float // הוצאות המיוחסות לפרמיה (יוקצו לפי פרמיה שהורווחה)
+  claimsExpense  Float // הוצאות המיוחסות לתביעות (יוקצו לפי תביעות צפויות)
   description    String?
   updatedAt      DateTime @updatedAt
 
@@ -145,12 +145,12 @@ model ActuarialEstimate {
   year                   Int
   month                  Int
   branchNumber           Int
-  underwritingYear       Int      // שנת חיתום (Underwriting Year)
-  lossYear               Int      // שנת נזק (Loss Year / Accident Year)
-  outstandingClaimsGross Float    // תביעות תלויות ברוטו
-  outstandingClaimsRi    Float    // חלק מבטח משנה בתביעות תלויות
-  ibnrGross              Float    // IBNR ברוטו
-  ibnrRi                 Float    // IBNR חלק מבטח משנה
+  underwritingYear       Int // שנת חיתום (Underwriting Year)
+  lossYear               Int // שנת נזק (Loss Year / Accident Year)
+  outstandingClaimsGross Float // תביעות תלויות ברוטו
+  outstandingClaimsRi    Float // חלק מבטח משנה בתביעות תלויות
+  ibnrGross              Float // IBNR ברוטו
+  ibnrRi                 Float // IBNR חלק מבטח משנה
   actuarialEstimateGross Float    @default(0) // הערכה אקטוארית כוללת ברוטו (תלויות + IBNR + התאמות)
   actuarialEstimateRi    Float    @default(0) // הערכה אקטוארית כוללת חלק ב"מ
   updatedAt              DateTime @updatedAt
