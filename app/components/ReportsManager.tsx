@@ -14,6 +14,15 @@ const TABS: { key: TabType; label: string; icon: string; color: string }[] = [
   { key: 'branches',        label: 'ענפים',          icon: '🗂️', color: 'bg-violet-600 text-white shadow-lg' },
 ];
 
+function SumChip({ label, value, color, bold }: { label: string; value: number; color: string; bold?: boolean }) {
+  return (
+    <div className={`flex flex-col items-center px-3 py-2 rounded-xl border text-xs ${color}`}>
+      <span className="opacity-60 font-medium mb-0.5">{label}</span>
+      <span className={`font-mono text-sm ${bold ? 'font-black' : 'font-bold'}`}>{value.toLocaleString()}</span>
+    </div>
+  );
+}
+
 export default function ReportsManager() {
   const [activeTab, setActiveTab]     = useState<TabType>('params');
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -88,16 +97,53 @@ export default function ReportsManager() {
           ))}
         </div>
 
-        {/* חיפוש */}
-        <div className="mb-6">
+        {/* חיפוש + סיכום */}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mb-6">
           <input type="text" placeholder="חפש לפי מספר ענף / שם..."
             className="w-full md:w-80 p-3 rounded-2xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none"
             onChange={e => setSearchTerm(e.target.value)} />
+
+          {!loading && filteredData.length > 0 && activeTab !== 'branches' && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs font-bold text-slate-400 ml-1">
+                {filteredData.length} {searchTerm ? 'מסוננות' : 'רשומות'}
+              </span>
+
+              {activeTab === 'params' && (
+                <SumChip label="פרמיה חזויה" value={filteredData.reduce((s, r) => s + (r.expectedGrossPremium ?? 0), 0)} color="text-indigo-700 bg-indigo-50 border-indigo-200" />
+              )}
+
+              {activeTab === 'premium-actuals' && (<>
+                <SumChip label="פרמיה ברוטו"  value={filteredData.reduce((s, r) => s + (r.grossPremium ?? 0), 0)}         color="text-emerald-700 bg-emerald-50 border-emerald-200" />
+                <SumChip label="עמלת סוכן"     value={filteredData.reduce((s, r) => s + (r.agentComm ?? 0), 0)}             color="text-rose-700 bg-rose-50 border-rose-200" />
+                <SumChip label="פרמיה ב״מ"     value={filteredData.reduce((s, r) => s + (r.reinsurancePremium ?? 0), 0)}    color="text-slate-700 bg-slate-100 border-slate-200" />
+                <SumChip label="עמלת ב״מ"      value={filteredData.reduce((s, r) => s + (r.reinsuranceComm ?? 0), 0)}       color="text-emerald-700 bg-emerald-50 border-emerald-200" />
+              </>)}
+
+              {activeTab === 'claims-actuals' && (<>
+                <SumChip label="תביעות ברוטו" value={filteredData.reduce((s, r) => s + (r.claimsPaidGross ?? 0), 0)} color="text-sky-700 bg-sky-50 border-sky-200" />
+                <SumChip label="תביעות ב״מ"   value={filteredData.reduce((s, r) => s + (r.claimsPaidRi ?? 0), 0)}    color="text-emerald-700 bg-emerald-50 border-emerald-200" />
+              </>)}
+
+              {activeTab === 'actuarial' && (<>
+                <SumChip label="תלויות ברוטו"  value={filteredData.reduce((s, r) => s + (r.outstandingClaimsGross ?? 0), 0)} color="text-amber-700 bg-amber-50 border-amber-200" />
+                <SumChip label="IBNR ברוטו"     value={filteredData.reduce((s, r) => s + (r.ibnrGross ?? 0), 0)}              color="text-amber-700 bg-amber-50 border-amber-200" />
+                <SumChip label="הערכה ברוטו"   value={filteredData.reduce((s, r) => s + (r.actuarialEstimateGross ?? 0), 0)} color="text-orange-700 bg-orange-50 border-orange-200" />
+                <SumChip label="הערכה ב״מ"     value={filteredData.reduce((s, r) => s + (r.actuarialEstimateRi ?? 0), 0)}    color="text-orange-700 bg-orange-50 border-orange-200" />
+              </>)}
+
+              {activeTab === 'admin-expense' && (<>
+                <SumChip label="הוצ׳ לפרמיה"  value={filteredData.reduce((s, r) => s + (r.premiumExpense ?? 0), 0)}                             color="text-rose-700 bg-rose-50 border-rose-200" />
+                <SumChip label="הוצ׳ לתביעות" value={filteredData.reduce((s, r) => s + (r.claimsExpense ?? 0), 0)}                              color="text-rose-700 bg-rose-50 border-rose-200" />
+                <SumChip label='סה"כ'          value={filteredData.reduce((s, r) => s + (r.premiumExpense ?? 0) + (r.claimsExpense ?? 0), 0)}    color="text-rose-900 bg-rose-100 border-rose-300" bold />
+              </>)}
+            </div>
+          )}
         </div>
 
         {/* טבלה */}
         <div className="bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-slate-200">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
             <table className="w-full text-right border-collapse text-sm">
               <thead className="bg-slate-800 text-white text-xs">
                 <tr>
@@ -161,7 +207,7 @@ export default function ReportsManager() {
 
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={8} className="p-20 text-center text-indigo-500 animate-pulse font-bold">מושך נתונים...</td></tr>
+                  <tr><td colSpan={10} className="p-20 text-center text-indigo-500 animate-pulse font-bold">מושך נתונים...</td></tr>
                 ) : filteredData.map((row, i) => (
                   <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                     {activeTab !== 'admin-expense' && (
@@ -226,6 +272,7 @@ export default function ReportsManager() {
                   </tr>
                 ))}
               </tbody>
+
             </table>
             {!loading && filteredData.length === 0 && (
               <div className="p-20 text-center text-slate-400">לא נמצאו נתונים</div>
