@@ -22,6 +22,7 @@ export default function Navbar() {
     { label: "דוחות UPR", href: "/upr" },
     { label: "סימולטור PNL", href: "/pnl" },
     { label: "ניתוח ענפי", href: "/branch" },
+    { label: "ניתוח רוחבי", href: "/matrix" },
     { label: "אודות", href: "/about" },
   ];
 

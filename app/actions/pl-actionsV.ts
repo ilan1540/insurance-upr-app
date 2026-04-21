@@ -2,6 +2,46 @@
 import { prisma } from "@/lib/prisma";
 
 // ---------------------------------------------------------------------------
+// דוח מטריצה: כל הענפים כעמודות, מרכיבי P&L כשורות — מצטבר YTD
+// ---------------------------------------------------------------------------
+export async function getBranchMatrixReport(year: number, toMonth: number, groupCode?: string) {
+  try {
+    const [branchRows, branchMeta] = await Promise.all([
+      prisma.premiumActuals.findMany({
+        select: { branchNumber: true },
+        distinct: ["branchNumber"],
+        where: { year, month: { lte: toMonth } },
+      }),
+      prisma.branch.findMany({ orderBy: [{ groupCode: "asc" }, { branchNumber: "asc" }] }),
+    ]);
+
+    const metaMap = new Map(branchMeta.map(b => [b.branchNumber, b]));
+    const allNums = branchRows.map(b => b.branchNumber).sort((a, b) => a - b);
+    const nums = groupCode
+      ? allNums.filter(bn => metaMap.get(bn)?.groupCode === groupCode)
+      : allNums;
+
+    const results = await Promise.all(
+      nums.map(async bn => {
+        const data = await fetchCumulativeData(bn, year, toMonth);
+        const meta = metaMap.get(bn);
+        return {
+          branchNumber: bn,
+          branchName:   meta?.branchName  ?? `ענף ${bn}`,
+          groupCode:    meta?.groupCode   ?? "",
+          groupName:    meta?.groupName   ?? "",
+          ...data,
+        };
+      })
+    );
+
+    return { success: true, branches: results };
+  } catch (e: any) {
+    return { success: false, error: e.message, branches: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // תביעות בפועל: שולף ClaimsActuals + ActuarialEstimate לענף ולתקופה
 // ---------------------------------------------------------------------------
 async function fetchActualClaims(branchNumber: number, y: number, m: number) {
@@ -273,22 +313,23 @@ function sumBranchData(results: any[]) {
 
 // ---------------------------------------------------------------------------
 // Public action
-// branchNumber === 0  →  כל הענפים (סיכום כולל)
+// branchNumber === 0 && !groupCode  →  כל הענפים (סיכום כולל)
+// branchNumber === 0 && groupCode   →  ענף מרכז (סיכום לפי קבוצה)
 // ---------------------------------------------------------------------------
 export async function getBranchComparisonReport(
   branchNumber: number,
   periodA: { year: number; month: number },
   periodB: { year: number; month: number },
-  mode: "monthly" | "cumulative" = "monthly"
+  mode: "monthly" | "cumulative" = "monthly",
+  groupCode?: string
 ) {
   try {
     if (branchNumber === 0) {
-      // שלוף את כל מספרי הענפים
-      const allBranches = await prisma.premiumActuals.findMany({
-        select: { branchNumber: true },
-        distinct: ["branchNumber"],
-      });
-      const nums = allBranches.map(b => b.branchNumber);
+      // שלוף ענפים לפי קבוצה או את כולם
+      const branchFilter = groupCode
+        ? await prisma.branch.findMany({ where: { groupCode }, select: { branchNumber: true } })
+        : await prisma.premiumActuals.findMany({ select: { branchNumber: true }, distinct: ["branchNumber"] });
+      const nums = branchFilter.map(b => b.branchNumber);
 
       const [resultsA, resultsB] = await Promise.all([
         Promise.all(nums.map(bn =>

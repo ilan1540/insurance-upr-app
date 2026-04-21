@@ -49,11 +49,6 @@ export default function UprManager() {
 
   return (
     <div className="max-w-5xl mx-auto p-8 bg-white rounded-4xl shadow-2xl border border-gray-100" dir="rtl">
-      <div className="text-center mb-10">
-        <h2 className="text-3xl font-black text-blue-900 mb-2">מערכת רזרבות (UPR / DUC)</h2>
-        <p className="text-slate-400 text-sm">חישוב UPR, DUC והקצאת הוצאות הנה"כ לפי IFRS17</p>
-        <div className="h-1 w-20 bg-blue-500 mx-auto rounded-full mt-3"></div>
-      </div>
 
       <div className="bg-slate-50 p-8 rounded-3xl mb-8 space-y-6">
         <div className="flex flex-col gap-3">

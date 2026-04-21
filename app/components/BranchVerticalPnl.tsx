@@ -15,8 +15,14 @@ function fmtPct(n: number) { return n.toFixed(1) + "%"; }
 // ─── Section header ───────────────────────────────────────────────────────────
 function SectionRow({ label }: { label: string }) {
   return (
-    <tr className="bg-slate-700">
-      <td colSpan={4} className="px-4 py-2 text-xs font-black text-slate-300 uppercase tracking-widest">{label}</td>
+    <tr>
+      <td colSpan={4} className="px-4 pt-5 pb-1">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-slate-200" />
+          <span className="text-xs font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">{label}</span>
+          <div className="flex-1 h-px bg-slate-200" />
+        </div>
+      </td>
     </tr>
   );
 }
@@ -117,13 +123,15 @@ function DrillDownTable({ data, label }: { data: any; label: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BranchVerticalPnl() {
   const [branches, setBranches]       = useState<any[]>([]);
-  const [branch, setBranch]           = useState<number>(0);   // 0 = כל הענפים
+  const [selection, setSelection]     = useState<string>("all"); // "all" | "group:CODE" | "123"
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [mode, setMode]               = useState<Mode>("monthly");
   const [periodA, setPeriodA]         = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [periodB, setPeriodB]         = useState({ year: new Date().getFullYear() - 1, month: new Date().getMonth() + 1 });
   const [report, setReport]           = useState<any>(null);
   const [loading, setLoading]         = useState(false);
+  const [showParams, setShowParams]   = useState(true);
+  const [showDrill, setShowDrill]     = useState(false);
   const [drillA, setDrillA]           = useState(false);
   const [drillB, setDrillB]           = useState(false);
 
@@ -132,14 +140,25 @@ export default function BranchVerticalPnl() {
     getAvailableYears().then(years => setAvailableYears(years));
   }, []);
 
-  const selectedBranch = branches.find(b => b.branchNumber === branch);
-  const branchLabel = branch === 0
-    ? "כל הענפים"
-    : selectedBranch ? `${selectedBranch.branchName} — ${selectedBranch.groupName}` : "";
+  const groups = Array.from(
+    new Map(branches.map(b => [b.groupCode, b.groupName])).entries()
+  ).map(([code, name]) => ({ code, name }));
+
+  const selectionLabel = (() => {
+    if (selection === "all") return "כל הענפים";
+    if (selection.startsWith("group:")) {
+      const g = groups.find(g => g.code === selection.slice(6));
+      return g ? `ענף מרכז: ${g.name}` : "";
+    }
+    const b = branches.find(b => b.branchNumber === Number(selection));
+    return b ? `${b.branchName} — ${b.groupName}` : "";
+  })();
 
   const loadReport = async () => {
     setLoading(true); setReport(null); setDrillA(false); setDrillB(false);
-    const res = await getBranchComparisonReport(branch, periodA, periodB, mode);
+    const branchNumber = selection.startsWith("group:") || selection === "all" ? 0 : Number(selection);
+    const groupCode    = selection.startsWith("group:") ? selection.slice(6) : undefined;
+    const res = await getBranchComparisonReport(branchNumber, periodA, periodB, mode, groupCode);
     if (res.success) setReport(res);
     setLoading(false);
   };
@@ -155,68 +174,90 @@ export default function BranchVerticalPnl() {
     <div className="max-w-5xl mx-auto p-6 md:p-8 bg-white rounded-[2.5rem] shadow-xl border border-slate-100" dir="rtl">
 
       {/* כותרת */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3 mb-4">
         <span className="p-2.5 bg-blue-600 text-white rounded-xl text-xl">📊</span>
-        <div>
-          <h3 className="text-2xl font-black text-slate-800">ניתוח אנכי והשוואתי</h3>
-          {branchLabel && <p className="text-slate-500 text-sm">{branchLabel}</p>}
-        </div>
+        <h3 className="text-2xl font-black text-slate-800">ניתוח אנכי והשוואתי</h3>
       </div>
+      {selectionLabel && (
+        <div className="flex items-center gap-3 mb-8">
+          <div className="flex-1 h-px bg-slate-200" />
+          <span className="text-base font-black text-slate-700 underline underline-offset-4 decoration-blue-400 decoration-2">{selectionLabel}</span>
+          <div className="flex-1 h-px bg-slate-200" />
+        </div>
+      )}
 
       {/* בקרה */}
-      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-8 space-y-5">
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl mb-8 overflow-hidden">
+        <button onClick={() => setShowParams(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-100 hover:bg-slate-200 transition-all text-xs font-bold text-slate-500">
+          <span>פרמטרים לשליפה</span>
+          <span className={`transition-transform ${showParams ? "rotate-180" : ""}`}>▼</span>
+        </button>
 
-        {/* ענף */}
-        <div>
-          <label className="text-xs font-bold text-slate-500 block mb-1.5">ענף</label>
-          <select value={branch} onChange={e => { setBranch(Number(e.target.value)); setReport(null); }}
-            className="w-full p-3 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500">
-            <option value={0}>כל הענפים (סיכום כולל)</option>
-            {branches.map(b => <option key={b.branchNumber} value={b.branchNumber}>{b.branchNumber} — {b.branchName}</option>)}
-          </select>
-        </div>
-
-        {/* מצב תצוגה */}
-        <div>
-          <label className="text-xs font-bold text-slate-500 block mb-1.5">מצב נתונים</label>
-          <div className="flex gap-2">
-            {(["monthly", "cumulative"] as Mode[]).map(m => (
-              <button key={m} onClick={() => { setMode(m); setReport(null); }}
-                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${
-                  mode === m ? "bg-blue-600 text-white shadow" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}>
-                {m === "monthly" ? "חודשי" : "מצטבר (YTD)"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* תקופות */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { label: "תקופה א'", p: periodA, set: setPeriodA },
-            { label: "תקופה ב' (השוואה)", p: periodB, set: setPeriodB },
-          ].map(({ label, p, set }) => (
-            <div key={label}>
-              <label className="text-xs font-bold text-slate-500 block mb-1.5">{label}</label>
+        {showParams && <>
+          {/* שורה 1: ענף + מצב נתונים */}
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x md:divide-x-reverse divide-slate-200">
+            <div className="p-4">
+              <label className="text-xs font-bold text-slate-400 block mb-1.5">ענף</label>
+              <select value={selection} onChange={e => { setSelection(e.target.value); setReport(null); }}
+                className="w-full p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                <option value="all">כל הענפים (סיכום כולל)</option>
+                {groups.map(g => (
+                  <optgroup key={g.code} label={g.name}>
+                    <option value={`group:${g.code}`}>כל {g.name} (ענף מרכז)</option>
+                    {branches.filter(b => b.groupCode === g.code).map(b => (
+                      <option key={b.branchNumber} value={String(b.branchNumber)}>{b.branchNumber} — {b.branchName}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="p-4">
+              <label className="text-xs font-bold text-slate-400 block mb-1.5">מצב נתונים</label>
               <div className="flex gap-2">
-                <select value={p.year} onChange={e => set({ ...p, year: Number(e.target.value) })}
-                  className="w-24 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none">
-                  {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <select value={p.month} onChange={e => set({ ...p, month: Number(e.target.value) })}
-                  className="flex-1 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none">
-                  {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                </select>
+                {(["monthly", "cumulative"] as Mode[]).map(m => (
+                  <button key={m} onClick={() => { setMode(m); setReport(null); }}
+                    className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                      mode === m ? "bg-blue-600 text-white shadow" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}>
+                    {m === "monthly" ? "חודשי" : "מצטבר (YTD)"}
+                  </button>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <button onClick={loadReport} disabled={loading}
-          className="w-full py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all">
-          {loading ? "מחשב..." : "הצג השוואה"}
-        </button>
+          <div className="border-t border-slate-200" />
+
+          {/* שורה 2: תקופות + כפתור */}
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x md:divide-x-reverse divide-slate-200">
+            {[
+              { label: "תקופה א'", p: periodA, set: setPeriodA },
+              { label: "תקופה ב' (השוואה)", p: periodB, set: setPeriodB },
+            ].map(({ label, p, set }) => (
+              <div key={label} className="p-4">
+                <label className="text-xs font-bold text-slate-400 block mb-1.5">{label}</label>
+                <div className="flex gap-2">
+                  <select value={p.year} onChange={e => set({ ...p, year: Number(e.target.value) })}
+                    className="w-24 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none text-sm">
+                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <select value={p.month} onChange={e => set({ ...p, month: Number(e.target.value) })}
+                    className="flex-1 p-2.5 rounded-xl border border-slate-200 bg-white font-bold text-slate-700 outline-none text-sm">
+                    {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+            ))}
+            <div className="p-4 flex items-end">
+              <button onClick={loadReport} disabled={loading}
+                className="w-full py-2.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all text-sm">
+                {loading ? "מחשב..." : "הצג דוח"}
+              </button>
+            </div>
+          </div>
+        </>}
+
       </div>
 
       {/* טבלה */}
@@ -226,9 +267,9 @@ export default function BranchVerticalPnl() {
         const profitB = calcProfit(dataB);
         return (
           <div className="space-y-6">
-            <div className="overflow-hidden border border-slate-200 rounded-2xl">
+            <div className="border border-slate-200 rounded-2xl overflow-auto max-h-[70vh]">
               <table className="w-full text-right text-sm">
-                <thead className="bg-slate-800 text-white text-xs">
+                <thead className="bg-slate-800 text-white text-xs sticky top-0 z-10">
                   <tr>
                     <th className="p-3 w-1/2">מרכיב הדוח</th>
                     <th className="p-3 text-left">{periodLabel(periodA)}</th>
@@ -280,24 +321,33 @@ export default function BranchVerticalPnl() {
             </div>
 
             {/* כפתורי Drill-down */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { open: drillA, set: setDrillA, data: dataA, label: periodLabel(periodA) },
-                { open: drillB, set: setDrillB, data: dataB, label: periodLabel(periodB) },
-              ].map(({ open, set, data, label }, i) => (
-                <div key={i} className="border border-slate-200 rounded-2xl overflow-hidden">
-                  <button onClick={() => set(!open)}
-                    className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-all font-bold text-sm text-slate-700">
-                    <span>🔍 Drill-down — {label}</span>
-                    <span className={`transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
-                  </button>
-                  {open && (
-                    <div className="p-4">
-                      <DrillDownTable data={data} label={label} />
+            <div className="border border-slate-200 rounded-2xl overflow-hidden">
+              <button onClick={() => setShowDrill(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-all font-bold text-sm text-slate-600">
+                <span>🔍 פירוט Drill-down</span>
+                <span className={`transition-transform ${showDrill ? "rotate-180" : ""}`}>▼</span>
+              </button>
+              {showDrill && (
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x md:divide-x-reverse divide-slate-200">
+                  {[
+                    { open: drillA, set: setDrillA, data: dataA, label: periodLabel(periodA) },
+                    { open: drillB, set: setDrillB, data: dataB, label: periodLabel(periodB) },
+                  ].map(({ open, set, data, label }, i) => (
+                    <div key={i}>
+                      <button onClick={() => set(!open)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 transition-all font-bold text-xs text-slate-500 border-t border-slate-200">
+                        <span>{label}</span>
+                        <span className={`transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+                      </button>
+                      {open && (
+                        <div className="p-4">
+                          <DrillDownTable data={data} label={label} />
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
         );
