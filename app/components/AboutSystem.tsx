@@ -9,9 +9,11 @@ export default function AboutSystem() {
       path: "app/actions/",
       files: [
         { name: "branch-actions.ts", desc: "קליטת ענפים, שמות וקיבוצים לצורך דיווח" },
-        { name: "data-actions.ts", desc: "קליטת תקציב, נתוני אמת ואקטואריה (CSV) + יצירת תחזית חודשית אוטומטית מ-BranchParameters" },
+        { name: "data-actions.ts", desc: "קליטת תקציב, נתוני אמת ואקטואריה (CSV) + validation ברמת שורה + chunked insert" },
         { name: "admin-expense-actions.ts", desc: "קליטת הוצאות הנה\"כ + הקצאה לענפים לפי IFRS17" },
-        { name: "upr-actions.ts", desc: "חישוב UPR/DUC לפי פוליסות + ארכיון snapshots" },
+        { name: "upr-actions.ts", desc: "חישוב UPR/DUC (LRC) + LIC + הקצאת הנה\"כ + רישום Audit Trail" },
+        { name: "gic-actions.ts", desc: "ניהול GIC — קיבוצי חוזי ביטוח לפי IFRS17 §16: סיווג ONEROUS / NOT_ONEROUS / UNDETERMINED" },
+        { name: "rollforward-actions.ts", desc: "IFRS17 Rollforward: LRC (§101-102) ו-LIC (§103-105) — פיוס פתיחה-סגירה חודשי" },
         { name: "template-actions.ts", desc: "יצירת והורדת קבצי CSV לדוגמה לכל סוגי הקלט" }
       ]
     },
@@ -20,7 +22,8 @@ export default function AboutSystem() {
       path: "app/components/",
       files: [
         { name: "OperationsDashboard.tsx", desc: "מרכז קליטת קבצים — 6 כרטיסי CSV + כפתור יצירת תחזית חודשית אוטומטית" },
-        { name: "ReportsManager.tsx", desc: "מרכז בקרת נתונים — לשוניות תצוגה לכל סוגי הנתונים" },
+        { name: "ReportsManager.tsx", desc: "מרכז בקרת נתונים — לשוניות תצוגה לכל סוגי הנתונים (שנים דינמיות מה-DB)" },
+        { name: "BranchVerticalPnl.tsx", desc: "P&L אנכי + אזהרה כשנתוני actuarial חסרים לחודש שאינו רבעון" },
         { name: "PnLReportView.tsx", desc: "סימולטור P&L חזוי — 5 sliders: LR, נפח פרמיה, עמלת סוכן, פרמיה ב\"מ, עמלת ב\"מ" },
         { name: "AdminExpenseInput.tsx", desc: "קלט הוצאות הנה\"כ + טבלת הקצאה לענפים" },
         { name: "AboutSystem.tsx", desc: "דף תיעוד והדרכה (דף זה)" }
@@ -36,8 +39,13 @@ export default function AboutSystem() {
         { name: "ClaimsActuals", desc: "תביעות אמת: year, month, branchNumber, underwritingYear, lossYear, claimsPaidGross, claimsPaidRi" },
         { name: "ActuarialEstimate", desc: "עתודות אקטואריות: year, month, branchNumber, underwritingYear, lossYear, תלויות ברוטו/ב\"מ, IBNR ברוטו/ב\"מ, הערכה אקטוארית ברוטו/ב\"מ" },
         { name: "AdminExpense", desc: "הוצאות הנה\"כ חודשיות: חלק פרמיה וחלק תביעות" },
-        { name: "UprSnapshot", desc: "snapshot חודשי: UPR + DAC ברוטו + עמלת ב\"מ נדחית + DUC נטו" },
-        { name: "AdminExpenseAllocation", desc: "הקצאת הנה\"כ לענפים: חלק פרמיה, חלק תביעות, הוצאה שהוכרה, הוצאה נדחית" }
+        { name: "UprSnapshot", desc: "snapshot חודשי LRC: UPR + DAC ברוטו (מ-Actuals) + עמלת ב\"מ נדחית + DUC נטו" },
+        { name: "LicSnapshot ✨", desc: "snapshot חודשי LIC: תביעות תלויות + IBNR + LIC ברוטו/ב\"מ/נטו" },
+        { name: "AdminExpenseAllocation", desc: "הקצאת הנה\"כ לענפים: חלק פרמיה, חלק תביעות, הוצאה שהוכרה, הוצאה נדחית" },
+        { name: "InsuranceContractGroup ✨", desc: "GIC לפי IFRS17 §16: (ענף × שנת חיתום) → bucket רווחיות + זיהוי onerous אוטומטי" },
+        { name: "LrcRollforward ✨", desc: "פיוס LRC חודשי: פתיחה ← פרמיה כתובה ← פרמיה שהורווחה ← עמלות ← סגירה (IFRS17 §101-102)" },
+        { name: "LicRollforward ✨", desc: "פיוס LIC חודשי: פתיחה ← תביעות Incurred ← תשלומים ← סגירה (IFRS17 §103-105)" },
+        { name: "CalculationRun ✨", desc: "Audit Trail: כל ריצת חישוב — timestamp, מספר ענפים, UPR, LIC, סטטוס" }
       ]
     }
   ];
@@ -147,6 +155,65 @@ export default function AboutSystem() {
         </div>
       </section>
 
+      {/* LIC, GIC, Rollforward */}
+      <section className="mb-12">
+        <h2 className="text-2xl font-bold text-slate-800 mb-6 border-r-4 border-emerald-600 pr-4">חישובי IFRS17 — LIC, GIC ו-Rollforward</h2>
+
+        {/* LIC */}
+        <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 mb-4">
+          <h3 className="font-black text-emerald-900 text-lg mb-3">4. LIC — התחייבות לתביעות שנוצרו (Liability for Incurred Claims)</h3>
+          <p className="text-sm text-emerald-800 mb-3">מחושב אוטומטית בכל ריצת חישוב UPR:</p>
+          <div className="bg-white rounded-2xl p-4 font-mono text-sm text-slate-700 space-y-1 mb-3">
+            <p>LIC ברוטו = תביעות ששולמו + תביעות תלויות + IBNR</p>
+            <p className="text-xs text-slate-400">אם קיימת הערכה אקטוארית כוללת — היא גוברת על תלויות + IBNR</p>
+            <p className="border-t pt-2">LIC ב"מ = חלק מבטח משנה בכל הרכיבים</p>
+            <p className="font-bold">LIC נטו = LIC ברוטו − LIC ב"מ</p>
+          </div>
+          <p className="text-xs text-emerald-700 bg-emerald-100/50 rounded-xl p-2">בחודשים שאינם רבעון: נתוני IBNR/תלויות עשויים להיות אפס — ניתוח LIC חלקי. אזהרה תוצג אוטומטית.</p>
+        </div>
+
+        {/* GIC */}
+        <div className="bg-violet-50 border border-violet-100 rounded-3xl p-6 mb-4">
+          <h3 className="font-black text-violet-900 text-lg mb-3">5. GIC — קיבוצי חוזי ביטוח (Groups of Insurance Contracts)</h3>
+          <p className="text-sm text-violet-800 mb-3">IFRS17 §16 מחייב לסווג חוזים לקבוצות לפי שלושה ממדים:</p>
+          <div className="bg-white rounded-2xl p-4 text-sm text-slate-700 space-y-2 mb-3">
+            <p><span className="font-bold text-violet-700">פורטפוליו</span> — קבוצת ענפים עם סיכונים דומים (ממד קיים: branchNumber)</p>
+            <p><span className="font-bold text-violet-700">שנת חיתום</span> — אין לערבב חוזים מיותר משנה אחת (underwritingYear)</p>
+            <p><span className="font-bold text-violet-700">Bucket רווחיות</span> — ONEROUS / NOT_ONEROUS / UNDETERMINED</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 font-mono text-sm text-slate-700 space-y-1">
+            <p>ONEROUS אוטומטי: expectedLrPct &gt; 100%</p>
+            <p>NOT_ONEROUS אוטומטי: expectedLrPct &lt;= 100%</p>
+            <p className="text-xs text-slate-400">ניתן לשנות bucket ידנית בעת הצורך</p>
+          </div>
+        </div>
+
+        {/* Rollforward */}
+        <div className="bg-cyan-50 border border-cyan-100 rounded-3xl p-6">
+          <h3 className="font-black text-cyan-900 text-lg mb-3">6. Rollforward — פיוס פתיחה-סגירה חודשי (IFRS17 §101-105)</h3>
+          <p className="text-sm text-cyan-800 mb-3">מאפשר לעקוב אחר תנועות העתודה בין חודשים — נדרש לדיווח רגולטורי:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl p-4 font-mono text-sm text-slate-700 space-y-1">
+              <p className="font-bold text-cyan-700 mb-2">LRC Rollforward (§101-102)</p>
+              <p>יתרת פתיחה (UPR)</p>
+              <p>+ פרמיה כתובה</p>
+              <p>− פרמיה שהורווחה</p>
+              <p>− עלויות רכישה</p>
+              <p>± ב"מ</p>
+              <p className="border-t pt-1 font-bold">= יתרת סגירה (UPR)</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 font-mono text-sm text-slate-700 space-y-1">
+              <p className="font-bold text-emerald-700 mb-2">LIC Rollforward (§103-105)</p>
+              <p>יתרת פתיחה (LIC)</p>
+              <p>+ תביעות שנוצרו (Incurred)</p>
+              <p>− תביעות ששולמו</p>
+              <p>± שינוי בהערכות</p>
+              <p className="border-t pt-1 font-bold">= יתרת סגירה (LIC)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* קבצי קלט */}
       <section className="mb-12">
         <h2 className="text-2xl font-bold text-slate-800 mb-6 border-r-4 border-violet-500 pr-4">קבצי קלט — מבנה ותדירות</h2>
@@ -214,7 +281,7 @@ export default function AboutSystem() {
       </section>
 
       <div className="text-center text-slate-400 text-xs mt-12">
-        נבנה עבור מערכת ניהול ביטוח | מפרט טכני מלא | פברואר 2026
+        נבנה עבור מערכת ניהול ביטוח | מפרט טכני מלא | מאי 2026
       </div>
     </div>
   );

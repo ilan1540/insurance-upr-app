@@ -13,7 +13,8 @@ datasource db {
  * npx prisma db push
  */
 
-// טבלה חדשה לאחסון פרטי פוליסות
+// ⚠️ DEPRECATED (R13) — טבלת פוליסות מקורית. הוחלפה ב-PremiumActuals.
+// אינה בשימוש בזרימת החישוב הפעילה. נשמרת זמנית לתאימות לאחור בלבד.
 model Policy {
   id            String   @id @default(cuid())
   policyNumber  String   @unique
@@ -80,6 +81,12 @@ model BranchParameters {
   reinsurancePct       Float // אחוז ביטוח משנה
   reinsuranceCommPct   Float // עמלה ממבטח משנה
   expectedLrPct        Float // אחוז Loss Ratio צפוי
+  expectedExpensePct   Float    @default(0) // R3: % הוצאות שירות צפוי (לחישוב Loss Component)
+
+  // R7 — Earning pattern: "PRO_RATA" | "EVEN_24THS" | "EXPOSURE"
+  earningPattern       String   @default("PRO_RATA")
+  coveragePeriodMonths Int      @default(12) // R4: לבדיקת זכאות PAA
+
   updatedAt            DateTime @updatedAt
 
   @@unique([year, branchNumber]) // מבטיח שורה אחת לכל ענף בשנה מסוימת
@@ -156,4 +163,263 @@ model ActuarialEstimate {
   updatedAt              DateTime @updatedAt
 
   @@unique([year, month, branchNumber, underwritingYear, lossYear])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C1 — LIC Snapshot (Liability for Incurred Claims)
+// אגרגציה חודשית של תביעות תלויות + IBNR לפי ענף
+// ─────────────────────────────────────────────────────────────────────────────
+model LicSnapshot {
+  id           String   @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
+
+  // תביעות ששולמו (Paid Claims)
+  claimsPaidGross Float @default(0)
+  claimsPaidRi    Float @default(0)
+
+  // תביעות תלויות (Outstanding Claims)
+  outstandingGross Float @default(0)
+  outstandingRi    Float @default(0)
+
+  // IBNR
+  ibnrGross Float @default(0)
+  ibnrRi    Float @default(0)
+
+  // הערכה אקטוארית כוללת (גוברת על outstanding+IBNR כשקיימת)
+  actuarialEstGross Float @default(0)
+  actuarialEstRi    Float @default(0)
+
+  // LIC סופי = claimsPaid + outstanding + IBNR (או actuarialEst אם קיים)
+  licGross Float @default(0) // LIC ברוטו
+  licRi    Float @default(0) // חלק מבטח משנה ב-LIC
+  licNet   Float @default(0) // LIC נטו = licGross − licRi
+
+  // R1/R2 — רכיבי מדידה IFRS17 על ה-LIC
+  riskAdjustment Float @default(0) // R1: Risk Adjustment (§37)
+  licDiscounted  Float @default(0) // R2: LIC מהוון (PV) — 0 אם undiscounted
+  financeExpense Float @default(0) // R2: unwind של ההיוון לתקופה (§87)
+  licFulfilment  Float @default(0) // licDiscounted + riskAdjustment (Fulfilment CF)
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([year, month, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S3 — Audit Trail לריצות חישוב
+// ─────────────────────────────────────────────────────────────────────────────
+model CalculationRun {
+  id           String   @id @default(cuid())
+  year         Int
+  month        Int
+  triggeredBy  String   @default("system") // שם משתמש / "system"
+  status       String   @default("SUCCESS") // "SUCCESS" | "PARTIAL" | "FAILED"
+  branchCount  Int      @default(0)         // מספר ענפים שחושבו
+  totalUpr     Float    @default(0)
+  totalDucNet  Float    @default(0)
+  totalLicNet  Float    @default(0)
+  notes        String?  // הערות / שגיאות חלקיות
+  createdAt    DateTime @default(now())
+
+  @@index([year, month])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C2 — Groups of Insurance Contracts (GIC / IFRS17)
+// מיפוי (ענף + שנת חיתום) לקבוצת חוזים עם סיווג רווחיות
+// ─────────────────────────────────────────────────────────────────────────────
+model InsuranceContractGroup {
+  id               String   @id @default(cuid())
+  branchNumber     Int
+  underwritingYear Int
+
+  // סיווג רווחיות (IFRS17 §16)
+  // "ONEROUS" | "NOT_ONEROUS" | "UNDETERMINED"
+  profitabilityBucket String @default("UNDETERMINED")
+
+  // פרטים לסיווג
+  expectedLrPct     Float? // LR% צפוי בזמן ההכרה הראשונית
+  isOnerous         Boolean @default(false) // true אם LR צפוי > 100%
+
+  // R5 — מקור סיווג ההפסדיות: "BUDGET" (תקציב) | "ACTUALS" (נתוני אמת)
+  onerousSource     String  @default("BUDGET")
+  actualLrPct       Float?  // LR בפועל בעת הערכה מחדש
+  lossComponent     Float   @default(0) // R3: רכיב הפסד נוכחי (§47)
+
+  // R4 — זכאות ל-PAA
+  paaEligible       Boolean @default(true)
+  paaBasis          String  @default("COVERAGE_LE_12M") // COVERAGE_LE_12M | NOT_MATERIALLY_DIFFERENT | INELIGIBLE
+
+  groupLabel String? // תיאור חופשי (למשל: "רכב חובה 2024 — לא הפסדי")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchNumber, underwritingYear])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C3 — IFRS17 Rollforward (LRC — Liability for Remaining Coverage)
+// פיוס פתיחה-סגירה חודשי לפי ענף (§101-105)
+// ─────────────────────────────────────────────────────────────────────────────
+model LrcRollforward {
+  id           String   @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
+
+  // יתרת פתיחה (מ-UprSnapshot של חודש קודם)
+  openingUpr    Float @default(0)
+  openingDucNet Float @default(0)
+
+  // תנועות תקופה
+  premiumsWritten   Float @default(0) // פרמיה כתובה (מ-PremiumActuals)
+  premiumsEarned    Float @default(0) // פרמיה שהורווחה (= openingUpr + written − closingUpr)
+  acquisitionCosts  Float @default(0) // עמלות רכישה שנרשמו (dacOpening − dacClosing + actualAgentComm)
+  riPremiumCeded    Float @default(0) // פרמיה שנמסרה לב"מ
+  riCommReceived    Float @default(0) // עמלה שהתקבלה מב"מ
+
+  // יתרת סגירה (מ-UprSnapshot של חודש זה)
+  closingUpr    Float @default(0)
+  closingDucNet Float @default(0)
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([year, month, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C3 — IFRS17 Rollforward (LIC — Liability for Incurred Claims)
+// פיוס פתיחה-סגירה חודשי לתביעות לפי ענף
+// ─────────────────────────────────────────────────────────────────────────────
+model LicRollforward {
+  id           String   @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
+
+  // יתרת פתיחה (מ-LicSnapshot של חודש קודם)
+  openingLicGross Float @default(0)
+  openingLicRi    Float @default(0)
+  openingLicNet   Float @default(0)
+
+  // תנועות תקופה
+  claimsIncurredGross Float @default(0) // תביעות שנוצרו (Incurred)
+  claimsIncurredRi    Float @default(0) // חלק ב"מ
+  claimsPaidGross     Float @default(0) // תשלומים ברוטו
+  claimsPaidRi        Float @default(0) // חלק ב"מ בתשלומים
+  changeInEstimates   Float @default(0) // שינוי בהערכות (experience adjustment)
+
+  // יתרת סגירה (מ-LicSnapshot של חודש זה)
+  closingLicGross Float @default(0)
+  closingLicRi    Float @default(0)
+  closingLicNet   Float @default(0)
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([year, month, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R1 — Risk Adjustment configuration (IFRS17 §37)
+// קונפיגורציה לחישוב RA לפי ענף/שנה. אם אין רשומה — משתמשים בברירת מחדל גלובלית.
+// ─────────────────────────────────────────────────────────────────────────────
+model RiskAdjustmentConfig {
+  id           String  @id @default(cuid())
+  year         Int
+  branchNumber Int     @default(0) // 0 = ברירת מחדל גלובלית לכל הענפים
+
+  method          String @default("PERCENTAGE") // PERCENTAGE | COST_OF_CAPITAL | CONFIDENCE
+  percentage      Float  @default(6)   // ל-PERCENTAGE
+  cocRate         Float  @default(6)   // ל-COST_OF_CAPITAL
+  confidenceLevel Float  @default(75)  // ל-CONFIDENCE
+  volatility      Float  @default(0.2) // ל-CONFIDENCE (CoV)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([year, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R2 — Discount curve (IFRS17 §36, §B72)
+// עקום ריבית spot לפי מטבע ותקופה. משמש להיוון תזרימי LIC.
+// ─────────────────────────────────────────────────────────────────────────────
+model DiscountCurve {
+  id         String  @id @default(cuid())
+  year       Int
+  month      Int
+  currency   String  @default("ILS")
+  yearOffset Int     // נקודת זמן בעקום (1,2,3...)
+  spotRate   Float   // שיעור spot שנתי (0.04 = 4%)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([year, month, currency, yearOffset])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R3 — Loss Component rollforward (IFRS17 §47-52)
+// פיוס רכיב הפסד לחוזים הפסדיים: פתיחה + הכרה − שחרור → סגירה.
+// ─────────────────────────────────────────────────────────────────────────────
+model LossComponentRollforward {
+  id           String @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
+
+  openingLc        Float @default(0)
+  recognisedLc     Float @default(0) // הפסד חדש שהוכר בתקופה
+  releasedLc       Float @default(0) // שחרור שיטתי בתקופה
+  adjustmentLc     Float @default(0) // שינוי בהערכות
+  closingLc        Float @default(0)
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([year, month, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R11 — Reinsurance asset (held) — מדידה נפרדת (IFRS17 §60-70)
+// נכס ביטוח משנה: LRC-RI (פרמיה נדחית/עמלה) + LIC-RI (החזרים) + loss-recovery.
+// ─────────────────────────────────────────────────────────────────────────────
+model ReinsuranceAsset {
+  id           String @id @default(cuid())
+  year         Int
+  month        Int
+  branchNumber Int
+
+  // LRC צד ב"מ
+  riUpr          Float @default(0) // פרמיית ב"מ נדחית
+  riDeferredComm Float @default(0) // עמלת ב"מ נדחית
+
+  // LIC צד ב"מ (Amounts recoverable)
+  riLicGross     Float @default(0) // החזרי תביעות צפויים מב"מ
+  riRiskAdj      Float @default(0) // RA על נכס הב"מ
+
+  // §66 — Loss-recovery component מול חוזים הפסדיים
+  lossRecoveryComponent Float @default(0)
+
+  netReinsuranceAsset Float @default(0) // סך הנכס נטו
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([year, month, branchNumber])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R12 — Reconciliation run — תוצאות בדיקות בקרה לפני סגירת תקופה
+// ─────────────────────────────────────────────────────────────────────────────
+model ReconciliationRun {
+  id           String   @id @default(cuid())
+  year         Int
+  month        Int
+  errors       Int      @default(0)
+  warnings     Int      @default(0)
+  canClose     Boolean  @default(false)
+  findingsJson String?  // JSON של רשימת הממצאים
+  createdAt    DateTime @default(now())
+
+  @@index([year, month])
 }

@@ -221,11 +221,18 @@ export default function BranchVerticalPnl() {
 
       {/* טבלה */}
       {report && (() => {
-        const { dataA, dataB } = report;
+        const { dataA, dataB, actuarialWarningA, actuarialWarningB } = report;
         const profitA = calcProfit(dataA);
         const profitB = calcProfit(dataB);
         return (
           <div className="space-y-6">
+            {/* N3: אזהרת נתונים אקטואריים חסרים */}
+            {(actuarialWarningA || actuarialWarningB) && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-800 space-y-1">
+                {actuarialWarningA && <p>{actuarialWarningA}</p>}
+                {actuarialWarningB && <p>{actuarialWarningB}</p>}
+              </div>
+            )}
             <div className="overflow-hidden border border-slate-200 rounded-2xl">
               <table className="w-full text-right text-sm">
                 <thead className="bg-slate-800 text-white text-xs">

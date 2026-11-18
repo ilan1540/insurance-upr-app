@@ -45,3 +45,12 @@ prisma/generated/
 
 # old entry
 /app/generated/prisma
+
+.vercel
+.env*.local
+
+# Google Drive sync temp files
+.tmp.driveupload/
+
+# nested duplicate copy of the project
+/insurance-upr-app/

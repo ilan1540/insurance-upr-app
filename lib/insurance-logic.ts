@@ -65,29 +65,43 @@ export function calculateInsuranceAccounting(params: InsuranceParams) {
 
 // ---------------------------------------------------------------------------
 // חישוב DUC ברמת ענף מנתוני Snapshot
+//
+// M3 FIX: מקבלת סכומי עמלה בפועל (מ-PremiumActuals) במקום אחוזים מהתקציב.
+// מאפשרת fallback לחישוב מאחוזים כשאין נתוני actuals.
 // ---------------------------------------------------------------------------
 export interface DucBranchInput {
   branchNumber: number;
-  originalPremium: number;  // פרמיה כתובה ברוטו
-  uprValue: number;         // UPR מחושב
-  agentCommPct: number;     // % עמלת סוכן
-  reinsurancePct: number;   // % ביטוח משנה
-  reinsuranceCommPct: number; // % עמלת ב"מ
+  originalPremium: number;      // פרמיה כתובה ברוטו
+  uprValue: number;             // UPR מחושב
+
+  // Actuals (מ-PremiumActuals) — עדיפות ראשונה
+  actualAgentComm?: number;     // עמלת סוכן בפועל
+  actualRIComm?: number;        // עמלת ב"מ בפועל
+
+  // Fallback לחישוב מאחוזים (מ-BranchParameters) — כשאין actuals
+  agentCommPct?: number;
+  reinsurancePct?: number;
+  reinsuranceCommPct?: number;
 }
 
 export function calculateDucForBranch(b: DucBranchInput) {
   const uprRatio = b.originalPremium > 0 ? b.uprValue / b.originalPremium : 0;
 
-  const totalAgentComm = b.originalPremium * (b.agentCommPct / 100);
+  // DAC: עדיפות לעמלה בפועל, fallback לחישוב מאחוז תקציב
+  const totalAgentComm = b.actualAgentComm !== undefined
+    ? b.actualAgentComm
+    : b.originalPremium * ((b.agentCommPct ?? 0) / 100);
   const dacGross = totalAgentComm * uprRatio;            // עמלת סוכן נדחית — נכס
 
-  const writtenRI = b.originalPremium * (b.reinsurancePct / 100);
-  const totalRIComm = writtenRI * (b.reinsuranceCommPct / 100);
+  // RI Comm: עדיפות לעמלה בפועל, fallback לחישוב מאחוזים
+  const totalRIComm = b.actualRIComm !== undefined
+    ? b.actualRIComm
+    : b.originalPremium * ((b.reinsurancePct ?? 0) / 100) * ((b.reinsuranceCommPct ?? 0) / 100);
   const deferredRIComm = totalRIComm * uprRatio;         // עמלת ב"מ נדחית — הכנסה נדחית
 
   const ducNet = dacGross - deferredRIComm;              // DUC נטו
 
-  return { dacGross, deferredRIComm, ducNet, uprRatio };
+  return { dacGross, deferredRIComm, ducNet, uprRatio, usedActuals: b.actualAgentComm !== undefined };
 }
 
 // ---------------------------------------------------------------------------

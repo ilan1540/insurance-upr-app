@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insurance UPR App – מצגת פרוייקט</title>
+<style>
+  :root {
+    --blue:    #1e40af;
+    --blue-l:  #3b82f6;
+    --blue-xl: #dbeafe;
+    --teal:    #0d9488;
+    --teal-l:  #14b8a6;
+    --orange:  #ea580c;
+    --gray:    #1e293b;
+    --gray-l:  #64748b;
+    --bg:      #f8fafc;
+    --white:   #ffffff;
+    --red:     #dc2626;
+    --green:   #16a34a;
+    --yellow:  #ca8a04;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f172a;
+    color: var(--gray);
+    height: 100vh;
+    overflow: hidden;
+    direction: rtl;
+  }
+
+  /* ── Slide Container ── */
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-40px);
+    transition: opacity .45s ease, transform .45s ease;
+    overflow-y: auto;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(0);
+  }
+  .slide.exit {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+
+  /* ── Navigation ── */
+  .nav {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 100;
+    background: rgba(15,23,42,.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 99px;
+    padding: 8px 20px;
+  }
+  .nav button {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: color .2s, background .2s;
+  }
+  .nav button:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .nav button:disabled { opacity: .3; cursor: default; }
+  .slide-counter { color: #94a3b8; font-size: 13px; min-width: 60px; text-align: center; }
+
+  .dots {
+    display: flex;
+    gap: 6px;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #475569;
+    cursor: pointer;
+    transition: background .2s, transform .2s;
+  }
+  .dot.on { background: #3b82f6; transform: scale(1.4); }
+
+  /* Keyboard hint */
+  .hint {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #475569;
+    font-size: 12px;
+    z-index: 100;
+    letter-spacing: .5px;
+  }
+
+  /* ══════════════════════════════════
+     SLIDE STYLES
+  ══════════════════════════════════ */
+
+  /* ── Cover ── */
+  .s-cover {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0f2a4a 100%);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 20px;
+    padding: 40px;
+  }
+  .s-cover .logo {
+    font-size: 56px;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-10px); }
+  }
+  .s-cover h1 {
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.2;
+  }
+  .s-cover h1 span { color: #60a5fa; }
+  .s-cover .sub {
+    font-size: clamp(14px, 2vw, 20px);
+    color: #94a3b8;
+    max-width: 640px;
+  }
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  .pill {
+    background: rgba(59,130,246,.2);
+    border: 1px solid rgba(59,130,246,.4);
+    color: #93c5fd;
+    border-radius: 99px;
+    padding: 5px 16px;
+    font-size: 13px;
+  }
+
+  /* ── Generic content slide ── */
+  .s-content {
+    background: var(--bg);
+    padding: 40px 60px 100px;
+    gap: 24px;
+  }
+  .slide-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--blue-xl);
+  }
+  .slide-header .icon { font-size: 36px; }
+  .slide-header h2 {
+    font-size: clamp(22px, 3vw, 34px);
+    color: var(--blue);
+    font-weight: 800;
+  }
+  .slide-header .num {
+    margin-right: auto;
+    font-size: 13px;
+    color: var(--gray-l);
+    background: var(--blue-xl);
+    border-radius: 99px;
+    padding: 3px 12px;
+  }
+
+  /* ── Cards grid ── */
+  .card-grid {
+    display: grid;
+    gap: 16px;
+  }
+  .card-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .card-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .card {
+    background: var(--white);
+    border-radius: 14px;
+    padding: 20px;
+    border: 1.5px solid #e2e8f0;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+  .card .card-icon { font-size: 28px; margin-bottom: 10px; }
+  .card h3 { font-size: 16px; color: var(--blue); margin-bottom: 6px; font-weight: 700; }
+  .card p  { font-size: 13px; color: var(--gray-l); line-height: 1.6; }
+
+  .card.accent-blue  { border-color: #bfdbfe; background: #eff6ff; }
+  .card.accent-teal  { border-color: #99f6e4; background: #f0fdfa; }
+  .card.accent-orange{ border-color: #fed7aa; background: #fff7ed; }
+  .card.accent-green { border-color: #bbf7d0; background: #f0fdf4; }
+  .card.accent-red   { border-color: #fecaca; background: #fef2f2; }
+  .card.accent-purple{ border-color: #ddd6fe; background: #f5f3ff; }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+  }
+  .flow-box {
+    flex: 1;
+    background: var(--white);
+    border: 2px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-align: center;
+    position: relative;
+  }
+  .flow-box .fb-icon { font-size: 24px; margin-bottom: 6px; }
+  .flow-box .fb-title { font-size: 13px; font-weight: 700; color: var(--blue); }
+  .flow-box .fb-sub   { font-size: 11px; color: var(--gray-l); margin-top: 3px; }
+
+  .flow-box.phase-input  { border-color: #bbf7d0; background: #f0fdf4; }
+  .flow-box.phase-calc   { border-color: #bfdbfe; background: #eff6ff; }
+  .flow-box.phase-output { border-color: #ddd6fe; background: #f5f3ff; }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #94a3b8;
+    padding: 6px 0;
+  }
+  .flow-arrow.h { padding: 0 4px; font-size: 18px; }
+
+  /* ── Table ── */
+  .styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: var(--white);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1.5px solid #e2e8f0;
+  }
+  .styled-table th {
+    background: var(--blue);
+    color: #fff;
+    padding: 10px 14px;
+    text-align: right;
+    font-weight: 600;
+  }
+  .styled-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    color: var(--gray);
+    vertical-align: top;
+  }
+  .styled-table tr:last-child td { border-bottom: none; }
+  .styled-table tr:nth-child(even) td { background: #f8fafc; }
+  .styled-table tr:hover td { background: #eff6ff; }
+
+  /* ── Code block ── */
+  .code-block {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    direction: ltr;
+    text-align: left;
+    overflow-x: auto;
+  }
+  .code-block .c-comment { color: #64748b; }
+  .code-block .c-key     { color: #93c5fd; }
+  .code-block .c-val     { color: #86efac; }
+  .code-block .c-arrow   { color: #f9a8d4; }
+
+  /* ── Warning / Info boxes ── */
+  .alert {
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .alert.warn  { background: #fffbeb; border: 1.5px solid #fcd34d; color: #92400e; }
+  .alert.info  { background: #eff6ff; border: 1.5px solid #93c5fd; color: #1e40af; }
+  .alert.danger{ background: #fef2f2; border: 1.5px solid #fca5a5; color: #991b1b; }
+  .alert.good  { background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; }
+  .alert .ai   { font-size: 20px; flex-shrink: 0; }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray-l);
+    margin-bottom: 8px;
+  }
+
+  /* ── Two column ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-block;
+    border-radius: 99px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-red    { background: #fee2e2; color: #b91c1c; }
+  .badge-orange { background: #ffedd5; color: #c2410c; }
+  .badge-gray   { background: #f1f5f9; color: #475569; }
+
+  /* ── Dark slide ── */
+  .s-dark {
+    background: linear-gradient(135deg, #0f172a, #1e3a5f);
+    color: #e2e8f0;
+    padding: 40px 60px 100px;
+    gap: 24px;
+  }
+  .s-dark .slide-header h2 { color: #60a5fa; }
+  .s-dark .slide-header    { border-color: rgba(255,255,255,.1); }
+  .s-dark .card            { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); }
+  .s-dark .card h3         { color: #93c5fd; }
+  .s-dark .card p          { color: #94a3b8; }
+
+  /* ── Summary / end slide ── */
+  .s-end {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #14532d 100%);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 28px;
+    padding: 40px;
+  }
+  .s-end h1  { font-size: clamp(28px, 4vw, 48px); font-weight: 800; color: #fff; }
+  .s-end .sub{ font-size: clamp(14px, 1.8vw, 18px); color: #94a3b8; max-width: 600px; }
+  .stat-row  { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .stat-box  {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 16px;
+    padding: 20px 30px;
+    min-width: 140px;
+  }
+  .stat-box .sv { font-size: 36px; font-weight: 800; color: #60a5fa; }
+  .stat-box .sl { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+
+  /* ── DB schema visual ── */
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .db-table {
+    background: var(--white);
+    border-radius: 10px;
+    border: 2px solid #e2e8f0;
+    overflow: hidden;
+  }
+  .db-table .dbt-head {
+    background: var(--blue);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .db-table .dbt-head.input  { background: #0d9488; }
+  .db-table .dbt-head.output { background: #7c3aed; }
+  .db-table .dbt-field {
+    font-size: 11px;
+    padding: 5px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    color: var(--gray-l);
+    direction: ltr;
+    text-align: left;
+  }
+  .db-table .dbt-field:last-child { border-bottom: none; }
+  .db-table .dbt-field .pk { color: #f59e0b; font-weight: 700; }
+
+  /* Unused files slide */
+  .unused-list { display: flex; flex-direction: column; gap: 10px; }
+  .unused-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: var(--white);
+    border-radius: 10px;
+    padding: 12px 16px;
+    border: 1.5px solid #e2e8f0;
+  }
+  .unused-item .ui-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .unused-item .ui-body {}
+  .unused-item .ui-file { font-family: monospace; font-size: 12px; color: var(--red); font-weight: 600; }
+  .unused-item .ui-desc { font-size: 13px; color: var(--gray-l); margin-top: 3px; }
+  .unused-item .ui-action { font-size: 12px; color: var(--green); font-weight: 600; margin-top: 4px; }
+
+  /* Improvements slide */
+  .imp-list { display: flex; flex-direction: column; gap: 12px; }
+  .imp-item {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    background: var(--white);
+    border-radius: 12px;
+    padding: 14px 18px;
+    border: 1.5px solid #e2e8f0;
+  }
+  .imp-item .imp-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .imp-item .imp-body h4 { font-size: 14px; color: var(--gray); font-weight: 700; }
+  .imp-item .imp-body p  { font-size: 13px; color: var(--gray-l); margin-top: 3px; }
+
+  /* Progress bar */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #3b82f6, #14b8a6);
+    transition: width .4s ease;
+    z-index: 200;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+
+  @media (max-width: 768px) {
+    .s-content, .s-dark { padding: 24px 20px 90px; }
+    .card-grid.cols-3, .card-grid.cols-4 { grid-template-columns: 1fr 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .db-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="hint">← → מקשי חצים לניווט &nbsp;|&nbsp; Space / Enter</div>
+
+<div class="deck" id="deck">
+
+  <!-- ══ SLIDE 1: Cover ══ -->
+  <div class="slide s-cover active" data-index="0">
+    <div class="logo">🏦</div>
+    <h1>Insurance <span>UPR</span> App<br>מצגת פרוייקט</h1>
+    <p class="sub">מערכת לניהול חשבונאות ביטוחית תחת תקן IFRS17 (PAA) – חישוב פרמיות לא מורווחות, עמלות נדחות ודוחות רווח והפסד</p>
+    <div class="pills">
+      <span class="pill">Next.js 15</span>
+      <span class="pill">TypeScript</span>
+      <span class="pill">PostgreSQL</span>
+      <span class="pill">Prisma ORM</span>
+      <span class="pill">IFRS17 PAA</span>
+      <span class="pill">Vercel</span>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 2: Agenda ══ -->
+  <div class="slide s-content" data-index="1">
+    <div class="slide-header">
+      <span class="icon">🗂️</span>
+      <h2>סדר יום</h2>
+      <span class="num">1 / 10</span>
+    </div>
+    <div class="card-grid cols-2">
+      <div class="card accent-blue">
+        <div class="card-icon">🎯</div>
+        <h3>מטרות הפרוייקט</h3>
+        <p>מה המערכת פותרת ולמי היא מיועדת</p>
+      </div>
+      <div class="card accent-teal">
+        <div class="card-icon">🔄</div>
+        <h3>תרשים זרימה</h3>
+        <p>מחזור עבודה חודשי ותזרים הנתונים</p>
+      </div>
+      <div class="card accent-orange">
+        <div class="card-icon">🗄️</div>
+        <h3>מבנה מסד הנתונים</h3>
+        <p>טבלאות, שדות ויחסים</p>
+      </div>
+      <div class="card accent-purple" style="--purple-b:#ddd6fe;--purple-bg:#f5f3ff;">
+        <div class="card-icon">🧩</div>
+        <h3>מבנה הקומפוננטות</h3>
+        <p>דפים, קומפוננטות ויחסים ביניהם</p>
+      </div>
+      <div class="card accent-green">
+        <div class="card-icon">⚙️</div>
+        <h3>תהליכים ומטרות</h3>
+        <p>Server Actions ופונקציות ספריה</p>
+      </div>
+      <div class="card accent-red">
+        <div class="card-icon">🔍</div>
+        <h3>ממצאים והמלצות</h3>
+        <p>קבצים ללא שימוש ושיפורים מוצעים</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 3: Goals ══ -->
+  <div class="slide s-content" data-index="2">
+    <div class="slide-header">
+      <span class="icon">🎯</span>
+      <h2>מטרות הפרוייקט</h2>
+      <span class="num">2 / 10</span>
+    </div>
+    <div class="card-grid cols-3">
+      <div class="card accent-blue">
+        <div class="card-icon">📊</div>
+        <h3>UPR – פרמיה לא מורווחת</h3>
+        <p>חישוב Pro-Rata יומי לכל פוליסה על בסיס תאריכי כיסוי – תמונה חודשית מדויקת של ההתחייבות הביטוחית.</p>
+      </div>
+      <div class="card accent-teal">
+        <div class="card-icon">💼</div>
+        <h3>DUC – עמלות רכישה נדחות</h3>
+        <p>מעקב אחר DAC ועמלות ביטוח משנה נדחות בהתאמה מלאה לדרישות IFRS17 PAA.</p>
+      </div>
+      <div class="card accent-orange">
+        <div class="card-icon">📈</div>
+        <h3>P&L ותחזיות</h3>
+        <p>דוחות רווח והפסד YTD לפי ענף עם 5 סרגלי סימולציה (What-If) בזמן אמת.</p>
+      </div>
+      <div class="card accent-green">
+        <div class="card-icon">🏢</div>
+        <h3>הקצאת הוצאות ניהוליות</h3>
+        <p>חלוקת תקורה לענפים לפי משקל פרמיה מורווחת + תביעות צפויות, עם פיצול מוכר/נדחה.</p>
+      </div>
+      <div class="card" style="border-color:#ddd6fe;background:#f5f3ff;">
+        <div class="card-icon">📁</div>
+        <h3>ייבוא נתונים מ-CSV</h3>
+        <p>ייבוא פרמיות, תביעות, רזרבות אקטואריות ותקציב עם תבניות מוכנות להורדה.</p>
+      </div>
+      <div class="card" style="border-color:#fecdd3;background:#fff1f2;">
+        <div class="card-icon">🗃️</div>
+        <h3>ארכיון היסטורי</h3>
+        <p>שמירת UprSnapshot לכל חודש לצרכי ביקורת, השוואת תקופות ו-Drill-Down.</p>
+      </div>
+    </div>
+    <div class="alert info" style="margin-top:8px;">
+      <span class="ai">👥</span>
+      <div><strong>קהל יעד:</strong> חשבים, אקטוארים ומנהלי כספים בחברות ביטוח המנהלות מספר ענפים.</div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 4: Flow ══ -->
+  <div class="slide s-content" data-index="3">
+    <div class="slide-header">
+      <span class="icon">🔄</span>
+      <h2>תרשים זרימה – מחזור עבודה חודשי</h2>
+      <span class="num">3 / 10</span>
+    </div>
+    <div class="flow">
+      <!-- Phase 1 -->
+      <div class="section-label">שלב 1 – הגדרות ראשוניות</div>
+      <div class="flow-row" style="gap:12px;">
+        <div class="flow-box phase-input">
+          <div class="fb-icon">🏢</div>
+          <div class="fb-title">ייבוא סניפים</div>
+          <div class="fb-sub">Branch CSV → DB</div>
+        </div>
+        <div class="flow-arrow h">→</div>
+        <div class="flow-box phase-input">
+          <div class="fb-icon">💰</div>
+          <div class="fb-title">תקציב שנתי</div>
+          <div class="fb-sub">BranchParameters CSV</div>
+        </div>
+        <div class="flow-arrow h">→</div>
+        <div class="flow-box phase-input">
+          <div class="fb-icon">📅</div>
+          <div class="fb-title">פיצול לחודשים</div>
+          <div class="fb-sub">÷12 אוטומטי</div>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <!-- Phase 2 -->
+      <div class="section-label">שלב 2 – קלט חודשי</div>
+      <div class="flow-row" style="gap:12px;">
+        <div class="flow-box phase-input">
+          <div class="fb-icon">📋</div>
+          <div class="fb-title">פרמיות בפועל</div>
+          <div class="fb-sub">+ תאריכי כיסוי</div>
+        </div>
+        <div class="flow-arrow h">+</div>
+        <div class="flow-box phase-input">
+          <div class="fb-icon">⚖️</div>
+          <div class="fb-title">תביעות ששולמו</div>
+          <div class="fb-sub">שנת חיתוך / נזק</div>
+        </div>
+        <div class="flow-arrow h">+</div>
+        <div class="flow-box phase-input">
+          <div class="fb-icon">📐</div>
+          <div class="fb-title">רזרבות אקטוארי</div>
+          <div class="fb-sub">IBNR + עומד</div>
+        </div>
+        <div class="flow-arrow h">+</div>
+        <div class="flow-box phase-input">
+          <div class="fb-icon">🏛️</div>
+          <div class="fb-title">הוצאות ניהול</div>
+          <div class="fb-sub">Admin Expenses</div>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <!-- Phase 3 -->
+      <div class="section-label">שלב 3 – חישובים</div>
+      <div class="flow-row" style="gap:12px;">
+        <div class="flow-box phase-calc" style="flex:2;">
+          <div class="fb-icon">🧮</div>
+          <div class="fb-title">חישוב UPR / DUC</div>
+          <div class="fb-sub">Pro-Rata יומי · DAC · DUC נטו · UprSnapshot</div>
+        </div>
+        <div class="flow-arrow h">+</div>
+        <div class="flow-box phase-calc" style="flex:2;">
+          <div class="fb-icon">⚖️</div>
+          <div class="fb-title">הקצאת הוצאות IFRS17</div>
+          <div class="fb-sub">לפי משקל פרמיה + תביעות · מוכר / נדחה</div>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <!-- Phase 4 -->
+      <div class="section-label">שלב 4 – דיווח</div>
+      <div class="flow-row" style="gap:12px;">
+        <div class="flow-box phase-output">
+          <div class="fb-icon">📊</div>
+          <div class="fb-title">P&L YTD</div>
+          <div class="fb-sub">/pnl</div>
+        </div>
+        <div class="flow-box phase-output">
+          <div class="fb-icon">🗃️</div>
+          <div class="fb-title">ארכיון UPR</div>
+          <div class="fb-sub">/upr</div>
+        </div>
+        <div class="flow-box phase-output">
+          <div class="fb-icon">📉</div>
+          <div class="fb-title">P&L אנכי</div>
+          <div class="fb-sub">/branch</div>
+        </div>
+        <div class="flow-box phase-output">
+          <div class="fb-icon">📋</div>
+          <div class="fb-title">מרכז נתונים</div>
+          <div class="fb-sub">/report</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 5: DB Schema ══ -->
+  <div class="slide s-content" data-index="4">
+    <div class="slide-header">
+      <span class="icon">🗄️</span>
+      <h2>מבנה מסד הנתונים</h2>
+      <span class="num">4 / 10</span>
+    </div>
+    <div class="two-col" style="align-items:start;">
+      <div>
+        <div class="section-label">טבלאות קלט (Input)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="db-table">
+            <div class="dbt-head input">Branch</div>
+            <div class="dbt-field"><span class="pk">PK</span> branchNumber</div>
+            <div class="dbt-field">name · group</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head input">BranchParameters</div>
+            <div class="dbt-field">branchNumber · year</div>
+            <div class="dbt-field">expectedGrossPremium</div>
+            <div class="dbt-field">agentCommission · riComm</div>
+            <div class="dbt-field">expectedLossRatio</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head input">PremiumActuals</div>
+            <div class="dbt-field">branchNumber · year · month</div>
+            <div class="dbt-field">grossPremium · startDate</div>
+            <div class="dbt-field">endDate (תאריכי כיסוי)</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head input">ClaimsActuals</div>
+            <div class="dbt-field">branchNumber · uwYear · lossYear</div>
+            <div class="dbt-field">paidAmount · month</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head input">ActuarialEstimate</div>
+            <div class="dbt-field">branchNumber · year · month</div>
+            <div class="dbt-field">outstanding · ibnr</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head input">AdminExpense</div>
+            <div class="dbt-field">year · month</div>
+            <div class="dbt-field">premiumRelated · claimsRelated</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">טבלאות פלט מחושב (Output)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="db-table">
+            <div class="dbt-head output">UprSnapshot</div>
+            <div class="dbt-field">branchNumber · year · month</div>
+            <div class="dbt-field">grossPremium · uprValue</div>
+            <div class="dbt-field">earnedPremium · uprRatio</div>
+            <div class="dbt-field">dacGross · ducNet</div>
+            <div class="dbt-field">riCommDeferred</div>
+          </div>
+          <div class="db-table">
+            <div class="dbt-head output">AdminExpenseAllocation</div>
+            <div class="dbt-field">branchNumber · year · month</div>
+            <div class="dbt-field">premiumAllocated</div>
+            <div class="dbt-field">claimsAllocated</div>
+            <div class="dbt-field">recognized · deferred</div>
+          </div>
+        </div>
+        <div class="alert info" style="margin-top:16px;">
+          <span class="ai">🔗</span>
+          <div>כל טבלאות הפלט מחושבות מחדש בכל הפעלת <strong>runFullUprCalculation</strong> – ניתן להריץ מחדש לכל תקופה ללא אובדן נתוני מקור.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 6: Component Structure ══ -->
+  <div class="slide s-content" data-index="5">
+    <div class="slide-header">
+      <span class="icon">🧩</span>
+      <h2>מבנה הקומפוננטות</h2>
+      <span class="num">5 / 10</span>
+    </div>
+    <table class="styled-table">
+      <thead>
+        <tr>
+          <th>קומפוננטה</th>
+          <th>מסלול</th>
+          <th>תפקיד</th>
+          <th>סוג</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>DashboardHome</strong></td>
+          <td><code>/</code></td>
+          <td>לוח בקרה – כרטיסי ניווט לכל הסעיפים</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>Navbar</strong></td>
+          <td>כולל</td>
+          <td>ניווט עליון קבוע עם תפריט</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>OperationsDashboard</strong></td>
+          <td><code>/upload</code></td>
+          <td>ייבוא 6 סוגי CSV + יצירת תקציב חודשי אוטומטי</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>ReportsManager</strong></td>
+          <td><code>/report</code></td>
+          <td>6 טאבים לצפייה בנתונים גולמיים</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>UprManager</strong></td>
+          <td><code>/upr/operations</code></td>
+          <td>הפעלת חישוב UPR לתאריך נבחר / אצווה היסטורית</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>UprArchive + UprDetailedReport</strong></td>
+          <td><code>/upr</code></td>
+          <td>ארכיון חודשי + דוח פירוטי ברמת פוליסה</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>PnLReportView</strong></td>
+          <td><code>/pnl</code></td>
+          <td>P&L תחזיתי + 5 סרגלי What-If בזמן אמת</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>BranchVerticalPnl</strong></td>
+          <td><code>/branch</code></td>
+          <td>השוואת תקופות חודשית / מצטברת לפי סניף</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>AdminExpenseInput</strong></td>
+          <td><code>/upload</code></td>
+          <td>הזנה ידנית של הוצאות ניהול + טבלת הקצאה</td>
+          <td><span class="badge badge-blue">Client</span></td>
+        </tr>
+        <tr>
+          <td><strong>WorkflowGuide</strong></td>
+          <td><code>/guide</code></td>
+          <td>מדריך תהליכים אינטראקטיבי</td>
+          <td><span class="badge badge-gray">Static</span></td>
+        </tr>
+        <tr>
+          <td><strong>AboutSystem</strong></td>
+          <td><code>/about</code></td>
+          <td>אודות + מדריך שדות ומבנה נתונים</td>
+          <td><span class="badge badge-gray">Static</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ══ SLIDE 7: Server Actions ══ -->
+  <div class="slide s-content" data-index="6">
+    <div class="slide-header">
+      <span class="icon">⚙️</span>
+      <h2>Server Actions – תהליכים ומטרות</h2>
+      <span class="num">6 / 10</span>
+    </div>
+    <div class="two-col">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="card accent-blue">
+          <h3>🏢 branch-actions.ts</h3>
+          <p><code>uploadBranchesCSV</code> · <code>getAllBranches</code> · <code>getBranchMap</code><br>ניהול רשימת הסניפים</p>
+        </div>
+        <div class="card accent-teal">
+          <h3>📥 data-actions.ts</h3>
+          <p><code>uploadBranchParamsCSV</code> · <code>uploadPremiumActualsCSV</code> · <code>uploadClaimsActualsCSV</code> · <code>uploadActuarialCSV</code> · <code>generateMonthlyBudgetActuals</code><br>ייבוא כל הנתונים הגולמיים</p>
+        </div>
+        <div class="card" style="border-color:#bfdbfe;background:#eff6ff;">
+          <h3>🧮 upr-actions.ts <span class="badge badge-orange" style="margin-right:6px;">333 שורות</span></h3>
+          <p><code>runFullUprCalculation</code> · <code>runHistoricalBatchCalculation</code> · <code>getUprFromArchive</code> · <code>getDetailedUprReport</code><br><strong>לב המערכת</strong> – חישוב UPR/DUC + שמירה</p>
+        </div>
+        <div class="card" style="border-color:#ddd6fe;background:#f5f3ff;">
+          <h3>📊 pl-actions.ts</h3>
+          <p><code>getPnLReport(year, month)</code><br>P&L תחזיתי YTD לפי ענף על בסיס BranchParameters</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="card" style="border-color:#fed7aa;background:#fff7ed;">
+          <h3>📉 pl-actionsV.ts <span class="badge badge-orange" style="margin-right:6px;">280 שורות</span></h3>
+          <p><code>getBranchComparisonReport(branchNumber, periodA, periodB, mode)</code><br>השוואת תקופות (חודשי / מצטבר) עם פירוט DUC ותביעות</p>
+        </div>
+        <div class="card accent-green">
+          <h3>🏛️ admin-expense-actions.ts</h3>
+          <p><code>uploadAdminExpenseCSV</code> · <code>saveAdminExpense</code> · <code>getAdminExpenseAllocation</code><br>ניהול הוצאות ניהוליות והקצאתן</p>
+        </div>
+        <div class="card" style="border-color:#bbf7d0;background:#f0fdf4;">
+          <h3>📋 report-actions.ts</h3>
+          <p><code>getParamYears</code> · <code>getAvailableYears</code> · <code>getRawData</code> · <code>getReportData</code><br>שליפת נתונים גולמיים לתצוגה</p>
+        </div>
+        <div class="card" style="border-color:#e9d5ff;background:#faf5ff;">
+          <h3>📄 template-actions.ts</h3>
+          <p><code>downloadTemplate(type)</code><br>יצירת 7 סוגי קבצי CSV תבנית להורדה</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 8: UPR Calculation Logic ══ -->
+  <div class="slide s-content" data-index="7">
+    <div class="slide-header">
+      <span class="icon">🧮</span>
+      <h2>לוגיקת חישוב UPR – insurance-logic.ts</h2>
+      <span class="num">7 / 10</span>
+    </div>
+    <div class="two-col" style="align-items:start;">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="section-label">נוסחאות מרכזיות</div>
+        <div class="code-block">
+<span class="c-comment">// UPR Pro-Rata</span>
+<span class="c-key">uprRatio</span> <span class="c-arrow">=</span> (endDate - cutoffDate)
+         / (endDate - startDate)
+
+<span class="c-key">uprValue</span>  <span class="c-arrow">=</span> grossPremium × uprRatio
+<span class="c-key">earned</span>    <span class="c-arrow">=</span> grossPremium - uprValue
+
+<span class="c-comment">// DUC</span>
+<span class="c-key">dacGross</span>  <span class="c-arrow">=</span> agentComm × uprRatio
+<span class="c-key">riDefer</span>   <span class="c-arrow">=</span> riComm × uprRatio
+<span class="c-key">ducNet</span>    <span class="c-arrow">=</span> dacGross - riDefer
+
+<span class="c-comment">// Underwriting Profit</span>
+<span class="c-key">profit</span>    <span class="c-arrow">=</span> earned
+         - commEarned
+         - riCostEarned
+         - expectedClaims
+        </div>
+        <div class="alert info">
+          <span class="ai">⚖️</span>
+          <div>הפונקציה <code>allocateAdminExpenses()</code> מחלקת תקורה לפי <strong>משקל פרמיה מורווחת</strong> (הוצאות פרמיה) ו<strong>משקל תביעות צפויות</strong> (הוצאות תביעות).</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="section-label">סימולציות What-If – PnLReportView</div>
+        <div class="card accent-blue">
+          <h3>🎚️ 5 סרגלי סימולציה (Client-Side)</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>Loss Ratio</span><span class="badge badge-blue">±%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>נפח פרמיה</span><span class="badge badge-blue">±%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>עמלת סוכן</span><span class="badge badge-blue">±%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>אחוז ביטוח משנה</span><span class="badge badge-blue">±%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>עמלת ביטוח משנה</span><span class="badge badge-blue">±%</span>
+            </div>
+          </div>
+        </div>
+        <div class="alert good">
+          <span class="ai">✅</span>
+          <div>החישוב מבוצע <strong>בצד הלקוח בלבד</strong> – אין קריאות שרת, תגובה מיידית לכל שינוי בסרגל.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 9: Unused Files ══ -->
+  <div class="slide s-content" data-index="8">
+    <div class="slide-header">
+      <span class="icon">🔍</span>
+      <h2>קבצים ותהליכים ללא שימוש</h2>
+      <span class="num">8 / 10</span>
+    </div>
+    <div class="unused-list">
+      <div class="unused-item">
+        <span class="ui-icon">🗑️</span>
+        <div class="ui-body">
+          <div class="ui-file">old-Todel/ (5 קבצים)</div>
+          <div class="ui-desc">actions.ts, actuals-actions.ts, actuarial-actions.ts, params-actions.ts, old-calculate-upr.ts – קבצים ישנים שהוחלפו לחלוטין</div>
+          <div class="ui-action">✅ ניתן למחוק לחלוטין</div>
+        </div>
+      </div>
+      <div class="unused-item">
+        <span class="ui-icon">📁</span>
+        <div class="ui-body">
+          <div class="ui-file">lib/insurance-engine.ts · lib/actual-logic.ts</div>
+          <div class="ui-desc"><code>calculateFinancials()</code> ו-<code>calculateActualPnL()</code> – פונקציות שהוחלפו על ידי <code>insurance-logic.ts</code>, אינן מיובאות בשום מקום</div>
+          <div class="ui-action">✅ ניתן למחוק</div>
+        </div>
+      </div>
+      <div class="unused-item">
+        <span class="ui-icon">📤</span>
+        <div class="ui-body">
+          <div class="ui-file">app/actions/upload-policies.ts</div>
+          <div class="ui-desc"><code>uploadPoliciesCSV()</code> – קוד ירושה שהוחלף על ידי ייבוא PremiumActuals. אינו מיובא משום קומפוננטה.</div>
+          <div class="ui-action">✅ ניתן למחוק</div>
+        </div>
+      </div>
+      <div class="unused-item">
+        <span class="ui-icon">🔌</span>
+        <div class="ui-body">
+          <div class="ui-file">app/actions/delete-actions.ts</div>
+          <div class="ui-desc"><code>deleteDataByPeriod()</code> מוגדר ומממש אך אינו חשוף בממשק – אין כפתורי מחיקה בשום דף.</div>
+          <div class="ui-action">💡 לחבר ל-OperationsDashboard או למחוק</div>
+        </div>
+      </div>
+      <div class="unused-item">
+        <span class="ui-icon">📊</span>
+        <div class="ui-body">
+          <div class="ui-file">app/actions/variance-actions.ts</div>
+          <div class="ui-desc"><code>getActualVsTechnicalReport()</code> – דוח "בפועל מול טכני" כבר ממומש ומוכן אך אינו מחובר לאף קומפוננטה.</div>
+          <div class="ui-action">💡 ניתן להוסיף טאב ב-ReportsManager</div>
+        </div>
+      </div>
+      <div class="unused-item">
+        <span class="ui-icon">🔧</span>
+        <div class="ui-body">
+          <div class="ui-file">admin-expense-actions.ts → getAdminExpensesByYear()</div>
+          <div class="ui-desc">פונקציה שנמצאת בתוך קובץ פעיל אך אינה נקראת ממקום כלשהו.</div>
+          <div class="ui-action">💡 לחשוף בדוח שנתי או להסיר</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 10: Improvements ══ -->
+  <div class="slide s-content" data-index="9">
+    <div class="slide-header">
+      <span class="icon">🚀</span>
+      <h2>המלצות לשיפור</h2>
+      <span class="num">9 / 10</span>
+    </div>
+    <div class="two-col" style="align-items:start;">
+      <div>
+        <div class="section-label">עדיפות גבוהה</div>
+        <div class="imp-list">
+          <div class="imp-item">
+            <div class="imp-num" style="background:#fee2e2;color:#dc2626;">1</div>
+            <div class="imp-body">
+              <h4>ניקוי קוד ישן</h4>
+              <p>מחיקת <code>old-Todel/</code>, <code>insurance-engine.ts</code>, <code>actual-logic.ts</code> ו-<code>upload-policies.ts</code> – יפחית בלבול ויקצר את זמן האוריינטציה לקוד.</p>
+            </div>
+          </div>
+          <div class="imp-item">
+            <div class="imp-num" style="background:#ffedd5;color:#ea580c;">2</div>
+            <div class="imp-body">
+              <h4>חיבור מחוון מוכנות נתונים</h4>
+              <p><code>status-actions.ts → getDataStatus()</code> כבר קיים. הוספת תצוגה ירוק/אדום ב-OperationsDashboard לפני הפעלת חישוב UPR.</p>
+            </div>
+          </div>
+          <div class="imp-item">
+            <div class="imp-num" style="background:#fef9c3;color:#ca8a04;">3</div>
+            <div class="imp-body">
+              <h4>חשיפת דוח "בפועל מול טכני"</h4>
+              <p><code>variance-actions.ts</code> ממומש לחלוטין. הוספת טאב אחד ב-ReportsManager תחשוף דוח ערך גבוה ללא כתיבת קוד חדש.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">שיפורים נוספים</div>
+        <div class="imp-list">
+          <div class="imp-item">
+            <div class="imp-num" style="background:#dcfce7;color:#16a34a;">4</div>
+            <div class="imp-body">
+              <h4>כפתורי מחיקה לתקופה</h4>
+              <p><code>delete-actions.ts</code> מוכן. חיבורו ל-OperationsDashboard יאפשר ניהול נתונים ותיקון שגיאות ייבוא.</p>
+            </div>
+          </div>
+          <div class="imp-item">
+            <div class="imp-num" style="background:#dbeafe;color:#1d4ed8;">5</div>
+            <div class="imp-body">
+              <h4>Validation על CSV</h4>
+              <p>בדיקת כותרות עמודות וטיפוסים בצד הלקוח לפני שליחה לשרת – יחסוך שגיאות נסתרות בייבוא.</p>
+            </div>
+          </div>
+          <div class="imp-item">
+            <div class="imp-num" style="background:#f3e8ff;color:#7c3aed;">6</div>
+            <div class="imp-body">
+              <h4>תבנית שגיאות אחידה</h4>
+              <p>רוב ה-Actions מחזירים ערכים שונים בשגיאה. <code>&#123; success, error, data &#125;</code> אחיד ישפר UX ויקל על debugging.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 11: Summary ══ -->
+  <div class="slide s-end" data-index="10">
+    <div style="font-size:64px;">✅</div>
+    <h1>סיכום</h1>
+    <p class="sub">פרוייקט מובנה היטב עם הפרדת אחריות ברורה – ממשק, לוגיקה עסקית ונתונים. עיקר העבודה הנדרשת היא ניקוי קוד ישן וחיבור יכולות קיימות.</p>
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="sv">11</div>
+        <div class="sl">קומפוננטות</div>
+      </div>
+      <div class="stat-box">
+        <div class="sv">8</div>
+        <div class="sl">קבצי Actions</div>
+      </div>
+      <div class="stat-box">
+        <div class="sv">28</div>
+        <div class="sl">פונקציות שרת</div>
+      </div>
+      <div class="stat-box">
+        <div class="sv" style="color:#f87171;">5</div>
+        <div class="sl">קבצים ללא שימוש</div>
+      </div>
+      <div class="stat-box">
+        <div class="sv" style="color:#34d399;">6</div>
+        <div class="sl">המלצות שיפור</div>
+      </div>
+    </div>
+    <div class="pills" style="margin-top:8px;">
+      <span class="pill" style="background:rgba(16,185,129,.2);border-color:rgba(16,185,129,.4);color:#6ee7b7;">IFRS17 PAA Compliant</span>
+      <span class="pill" style="background:rgba(59,130,246,.2);border-color:rgba(59,130,246,.4);color:#93c5fd;">Next.js App Router</span>
+      <span class="pill" style="background:rgba(245,158,11,.2);border-color:rgba(245,158,11,.4);color:#fcd34d;">Vercel Deployment</span>
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- Navigation -->
+<div class="nav">
+  <button id="btn-prev" onclick="go(-1)">←</button>
+  <div class="dots" id="dots"></div>
+  <span class="slide-counter" id="counter"></span>
+  <button id="btn-next" onclick="go(1)">→</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total  = slides.length;
+  let cur = 0;
+
+  const dotsEl   = document.getElementById('dots');
+  const counter  = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+  const btnPrev  = document.getElementById('btn-prev');
+  const btnNext  = document.getElementById('btn-next');
+
+  // Build dots
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' on' : '');
+    d.onclick = () => goTo(i);
+    dotsEl.appendChild(d);
+  }
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    slides[cur].classList.remove('active');
+    slides[cur].classList.add('exit');
+    setTimeout(() => slides[cur < n ? cur : n + 1]?.classList.remove('exit'), 450);
+    cur = n;
+    slides[cur].classList.add('active');
+    slides[cur].scrollTop = 0;
+    update();
+  }
+
+  function go(d) { goTo(cur + d); }
+
+  function update() {
+    dotsEl.querySelectorAll('.dot').forEach((d,i) => d.classList.toggle('on', i === cur));
+    counter.textContent  = `${cur + 1} / ${total}`;
+    progress.style.width = `${((cur + 1) / total) * 100}%`;
+    btnPrev.disabled = cur === 0;
+    btnNext.disabled = cur === total - 1;
+    // clear exit classes
+    slides.forEach(s => { if (!s.classList.contains('active')) s.classList.remove('exit'); });
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      go(e.key === 'ArrowLeft' ? 1 : -1);
+    }
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); go(1); }
+  });
+
+  // Touch / swipe
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive:true });
+  document.addEventListener('touchend',   e => {
+    const dx = tx - e.changedTouches[0].clientX;
+    if (Math.abs(dx) > 50) go(dx > 0 ? 1 : -1);
+  });
+
+  update();
+</script>
+</body>
+</html>

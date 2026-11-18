@@ -98,8 +98,11 @@ export async function runFullUprCalculation(targetDate: string) {
 
     const paramsMap = new Map(branchParams.map(p => [p.branchNumber, p]));
 
-    // ---------- UPR לפי ענף מ-PremiumActuals (Pro-Rata לפי startDate/endDate) ----------
-    type BranchAgg = { totalPremium: number; totalUpr: number };
+    // ---------- UPR + צבירת עמלות actuals לפי ענף ----------
+    type BranchAgg = {
+      totalPremium: number; totalUpr: number;
+      totalAgentComm: number; totalRIComm: number; // M3: עמלות בפועל
+    };
     const branchAgg = new Map<number, BranchAgg>();
 
     for (const p of premiums) {
@@ -110,20 +113,25 @@ export async function runFullUprCalculation(targetDate: string) {
       const uprRatio      = totalDays > 0 && remainingDays > 0 ? Math.min(remainingDays / totalDays, 1) : 0;
       const uprValue      = p.grossPremium * uprRatio;
 
-      const cur = branchAgg.get(p.branchNumber) ?? { totalPremium: 0, totalUpr: 0 };
+      const cur = branchAgg.get(p.branchNumber) ?? { totalPremium: 0, totalUpr: 0, totalAgentComm: 0, totalRIComm: 0 };
       branchAgg.set(p.branchNumber, {
-        totalPremium: cur.totalPremium + p.grossPremium,
-        totalUpr:     cur.totalUpr     + uprValue,
+        totalPremium:   cur.totalPremium   + p.grossPremium,
+        totalUpr:       cur.totalUpr       + uprValue,
+        totalAgentComm: cur.totalAgentComm + p.agentComm,       // M3: עמלת סוכן בפועל
+        totalRIComm:    cur.totalRIComm    + p.reinsuranceComm, // M3: עמלת ב"מ בפועל
       });
     }
 
-    // ---------- DUC לפי ענף מ-BranchParameters ----------
+    // ---------- DUC מעמלות actuals (M3) ----------
     const snapshotData = Array.from(branchAgg.entries()).map(([branchNumber, agg]) => {
       const bp = paramsMap.get(branchNumber);
       const duc = calculateDucForBranch({
         branchNumber,
-        originalPremium:    agg.totalPremium,
-        uprValue:           agg.totalUpr,
+        originalPremium: agg.totalPremium,
+        uprValue:        agg.totalUpr,
+        // M3: שימוש בעמלות בפועל; fallback לאחוזי תקציב אם הן אפס
+        actualAgentComm: agg.totalAgentComm > 0 ? agg.totalAgentComm : undefined,
+        actualRIComm:    agg.totalRIComm    > 0 ? agg.totalRIComm    : undefined,
         agentCommPct:       bp?.agentCommPct       ?? 0,
         reinsurancePct:     bp?.reinsurancePct     ?? 0,
         reinsuranceCommPct: bp?.reinsuranceCommPct ?? 0,
@@ -175,17 +183,77 @@ export async function runFullUprCalculation(targetDate: string) {
       });
     }
 
+    // ---------- C1: חישוב LIC (Liability for Incurred Claims) ----------
+    const [claimsActuals, actuarialEstimates] = await Promise.all([
+      prisma.claimsActuals.findMany({ where: { year, month } }),
+      prisma.actuarialEstimate.findMany({ where: { year, month } }),
+    ]);
+
+    // אגרגציה לפי ענף
+    const licByBranch = new Map<number, {
+      claimsPaidGross: number; claimsPaidRi: number;
+      outstandingGross: number; outstandingRi: number;
+      ibnrGross: number; ibnrRi: number;
+      actuarialEstGross: number; actuarialEstRi: number;
+    }>();
+
+    for (const c of claimsActuals) {
+      const cur = licByBranch.get(c.branchNumber) ?? { claimsPaidGross: 0, claimsPaidRi: 0, outstandingGross: 0, outstandingRi: 0, ibnrGross: 0, ibnrRi: 0, actuarialEstGross: 0, actuarialEstRi: 0 };
+      licByBranch.set(c.branchNumber, { ...cur, claimsPaidGross: cur.claimsPaidGross + c.claimsPaidGross, claimsPaidRi: cur.claimsPaidRi + c.claimsPaidRi });
+    }
+    for (const a of actuarialEstimates) {
+      const cur = licByBranch.get(a.branchNumber) ?? { claimsPaidGross: 0, claimsPaidRi: 0, outstandingGross: 0, outstandingRi: 0, ibnrGross: 0, ibnrRi: 0, actuarialEstGross: 0, actuarialEstRi: 0 };
+      licByBranch.set(a.branchNumber, {
+        ...cur,
+        outstandingGross:  cur.outstandingGross  + a.outstandingClaimsGross,
+        outstandingRi:     cur.outstandingRi     + a.outstandingClaimsRi,
+        ibnrGross:         cur.ibnrGross         + a.ibnrGross,
+        ibnrRi:            cur.ibnrRi            + a.ibnrRi,
+        actuarialEstGross: cur.actuarialEstGross  + a.actuarialEstimateGross,
+        actuarialEstRi:    cur.actuarialEstRi     + a.actuarialEstimateRi,
+      });
+    }
+
+    // כלל LIC: אם יש הערכה אקטוארית כוללת — היא גוברת על outstanding+IBNR
+    const licSnapshotData = Array.from(licByBranch.entries()).map(([branchNumber, d]) => {
+      const useActuarial = d.actuarialEstGross > 0;
+      const licGross = d.claimsPaidGross + (useActuarial ? d.actuarialEstGross : d.outstandingGross + d.ibnrGross);
+      const licRi    = d.claimsPaidRi   + (useActuarial ? d.actuarialEstRi    : d.outstandingRi    + d.ibnrRi);
+      return { year, month, branchNumber, ...d, licGross, licRi, licNet: licGross - licRi };
+    });
+
+    await prisma.licSnapshot.deleteMany({ where: { year, month } });
+    if (licSnapshotData.length > 0) {
+      await prisma.licSnapshot.createMany({ data: licSnapshotData });
+    }
+
     const totalUpr    = snapshotData.reduce((s, r) => s + r.uprValue, 0);
     const totalDucNet = snapshotData.reduce((s, r) => s + r.ducNet,  0);
+    const totalLicNet = licSnapshotData.reduce((s, r) => s + r.licNet, 0);
+
+    // ---------- S3: Audit Trail ----------
+    await prisma.calculationRun.create({
+      data: {
+        year, month,
+        triggeredBy:  "user",
+        status:       "SUCCESS",
+        branchCount:  snapshotData.length,
+        totalUpr:     Math.round(totalUpr),
+        totalDucNet:  Math.round(totalDucNet),
+        totalLicNet:  Math.round(totalLicNet),
+      },
+    });
 
     const rows = snapshotData.map(s => {
       const alloc = allocations.find(a => a.branchNumber === s.branchNumber);
+      const lic   = licSnapshotData.find(l => l.branchNumber === s.branchNumber);
       return {
         branchNumber:      s.branchNumber,
         uprValue:          Math.round(s.uprValue),
         dacGross:          Math.round(s.dacGross),
         deferredRIComm:    Math.round(s.deferredRIComm),
         ducNet:            Math.round(s.ducNet),
+        licNet:            Math.round(lic?.licNet ?? 0),
         recognizedExpense: Math.round(alloc?.recognizedExpense ?? 0),
         deferredExpense:   Math.round(alloc?.deferredExpense   ?? 0),
       };
@@ -196,6 +264,7 @@ export async function runFullUprCalculation(targetDate: string) {
       count:           premiums.length,
       totalUpr:        Math.round(totalUpr),
       totalDucNet:     Math.round(totalDucNet),
+      totalLicNet:     Math.round(totalLicNet),
       hasAdminExpense: premiumExpense + claimsExpense > 0,
       rows,
     };

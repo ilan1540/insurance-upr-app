@@ -2,221 +2,14 @@
 import { prisma } from "@/lib/prisma";
 
 // ---------------------------------------------------------------------------
-// תביעות בפועל: שולף ClaimsActuals + ActuarialEstimate לענף ולתקופה
-// ---------------------------------------------------------------------------
-async function fetchActualClaims(branchNumber: number, y: number, m: number) {
-  const [claims, actuarial] = await Promise.all([
-    prisma.claimsActuals.findMany({ where: { year: y, month: m, branchNumber } }),
-    prisma.actuarialEstimate.findMany({ where: { year: y, month: m, branchNumber } }),
-  ]);
-
-  const claimsPaidGross = claims.reduce((s, r) => s + r.claimsPaidGross, 0);
-  const claimsPaidRi    = claims.reduce((s, r) => s + r.claimsPaidRi,    0);
-  const outstandingGross = actuarial.reduce((s, r) => s + r.outstandingClaimsGross, 0);
-  const outstandingRi    = actuarial.reduce((s, r) => s + r.outstandingClaimsRi,    0);
-  const ibnrGross        = actuarial.reduce((s, r) => s + r.ibnrGross,               0);
-  const ibnrRi           = actuarial.reduce((s, r) => s + r.ibnrRi,                  0);
-  const actuarialEstGross = actuarial.reduce((s, r) => s + r.actuarialEstimateGross, 0);
-  const actuarialEstRi    = actuarial.reduce((s, r) => s + r.actuarialEstimateRi,    0);
-
-  // תביעות בפועל = שולמו + תלויות + IBNR
-  const incurredGross = claimsPaidGross + outstandingGross + ibnrGross;
-  const incurredRi    = claimsPaidRi    + outstandingRi    + ibnrRi;
-
-  return {
-    claimsPaidGross, claimsPaidRi,
-    outstandingGross, outstandingRi,
-    ibnrGross, ibnrRi,
-    actuarialEstGross, actuarialEstRi,
-    incurredGross, incurredRi,
-    incurredNet: incurredGross - incurredRi,
-    hasData: claims.length > 0 || actuarial.length > 0,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// תביעות מצטברות YTD
-// ---------------------------------------------------------------------------
-async function fetchCumulativeClaims(branchNumber: number, y: number, toMonth: number) {
-  // שולמו: סכום כל החודשים 1..toMonth
-  const claims = await prisma.claimsActuals.findMany({
-    where: { year: y, month: { lte: toMonth }, branchNumber },
-  });
-  // אקטואריה: נכון לסוף התקופה (החודש האחרון הזמין ≤ toMonth)
-  const actuarial = await prisma.actuarialEstimate.findMany({
-    where: { year: y, month: toMonth, branchNumber },
-  });
-
-  const claimsPaidGross  = claims.reduce((s, r) => s + r.claimsPaidGross,           0);
-  const claimsPaidRi     = claims.reduce((s, r) => s + r.claimsPaidRi,              0);
-  const outstandingGross = actuarial.reduce((s, r) => s + r.outstandingClaimsGross, 0);
-  const outstandingRi    = actuarial.reduce((s, r) => s + r.outstandingClaimsRi,    0);
-  const ibnrGross        = actuarial.reduce((s, r) => s + r.ibnrGross,              0);
-  const ibnrRi           = actuarial.reduce((s, r) => s + r.ibnrRi,                 0);
-  const actuarialEstGross = actuarial.reduce((s, r) => s + r.actuarialEstimateGross, 0);
-  const actuarialEstRi    = actuarial.reduce((s, r) => s + r.actuarialEstimateRi,    0);
-
-  const incurredGross = claimsPaidGross + outstandingGross + ibnrGross;
-  const incurredRi    = claimsPaidRi    + outstandingRi    + ibnrRi;
-
-  return {
-    claimsPaidGross, claimsPaidRi,
-    outstandingGross, outstandingRi,
-    ibnrGross, ibnrRi,
-    actuarialEstGross, actuarialEstRi,
-    incurredGross, incurredRi,
-    incurredNet: incurredGross - incurredRi,
-    hasData: claims.length > 0 || actuarial.length > 0,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// נתוני תקופה בודדת (חודשי)
-// ---------------------------------------------------------------------------
-async function fetchPeriodData(branchNumber: number, y: number, m: number) {
-  const [closingSnapshot, openingSnapshot, params, premActuals, claimsData] = await Promise.all([
-    prisma.uprSnapshot.findUnique({
-      where: { year_period_periodType_branchNumber: { year: y, period: m, periodType: "MONTHLY", branchNumber } },
-    }),
-    prisma.uprSnapshot.findUnique({
-      where: { year_period_periodType_branchNumber: {
-        year: m === 1 ? y - 1 : y,
-        period: m === 1 ? 12 : m - 1,
-        periodType: "MONTHLY", branchNumber,
-      }},
-    }),
-    prisma.branchParameters.findUnique({ where: { year_branchNumber: { year: y, branchNumber } } }),
-    prisma.premiumActuals.findFirst({ where: { year: y, month: m, branchNumber } }),
-    fetchActualClaims(branchNumber, y, m),
-  ]);
-
-  const grossPremium   = premActuals?.grossPremium       ?? 0;
-  const agentCommPaid  = premActuals?.agentComm          ?? 0;
-  const riPremiumPaid  = premActuals?.reinsurancePremium ?? 0;
-  const riCommReceived = premActuals?.reinsuranceComm    ?? 0;
-
-  const uprClosing      = Number(closingSnapshot?.uprValue       ?? 0);
-  const uprOpening      = Number(openingSnapshot?.uprValue       ?? 0);
-  const dacClosing      = Number(closingSnapshot?.dacGross       ?? 0);
-  const dacOpening      = Number(openingSnapshot?.dacGross       ?? 0);
-  const riDeferredClose = Number(closingSnapshot?.deferredRIComm ?? 0);
-  const riDeferredOpen  = Number(openingSnapshot?.deferredRIComm ?? 0);
-  const ducNetClosing   = Number(closingSnapshot?.ducNet         ?? 0);
-  const ducNetOpening   = Number(openingSnapshot?.ducNet         ?? 0);
-
-  const earnedGross = grossPremium + uprOpening - uprClosing;
-  const uprRatio    = grossPremium > 0 ? uprClosing / grossPremium : 0;
-
-  const agentCommEarned = agentCommPaid > 0
-    ? agentCommPaid * (1 - uprRatio)
-    : (earnedGross * Number(params?.agentCommPct ?? 0)) / 100;
-
-  const riPremEarned = riPremiumPaid > 0
-    ? riPremiumPaid * (1 - uprRatio)
-    : (earnedGross * Number(params?.reinsurancePct ?? 0)) / 100;
-  const riCommEarned = riCommReceived > 0
-    ? riCommReceived * (1 - uprRatio)
-    : riPremEarned * (Number(params?.reinsuranceCommPct ?? 0) / 100);
-  const reinsuranceCost = riPremEarned - riCommEarned;
-
-  // תביעות: אמת אם קיים, אחרת תחזית
-  const actualClaims    = claimsData.incurredGross;
-  const expectedClaims  = (earnedGross * Number(params?.expectedLrPct ?? 0)) / 100;
-  const claimsToUse     = claimsData.hasData ? actualClaims : expectedClaims;
-  const claimsRi        = claimsData.hasData ? claimsData.incurredRi : claimsToUse * (Number(params?.reinsurancePct ?? 0) / 100);
-
-  return {
-    grossPremium, uprOpening, uprClosing, earnedPremium: earnedGross,
-    agentComm: agentCommEarned, reinsuranceCost,
-    claimsGross: claimsToUse, claimsRi, claimsNet: claimsToUse - claimsRi,
-    claimsDetail: claimsData,
-    expectedClaimsBudget: expectedClaims,
-    uprRatio,
-    dacClosing, dacOpening, riDeferredClose, riDeferredOpen,
-    ducNetClosing, ducNetOpening,
-    agentCommPaid, riPremiumPaid, riCommReceived,
-    params: params ?? {},
-  };
-}
-
-// ---------------------------------------------------------------------------
-// נתונים מצטברים YTD
-// ---------------------------------------------------------------------------
-async function fetchCumulativeData(branchNumber: number, y: number, toMonth: number) {
-  const [closingSnapshot, openingSnapshot, params, allPremiums, claimsData] = await Promise.all([
-    prisma.uprSnapshot.findUnique({
-      where: { year_period_periodType_branchNumber: { year: y, period: toMonth, periodType: "MONTHLY", branchNumber } },
-    }),
-    prisma.uprSnapshot.findUnique({
-      where: { year_period_periodType_branchNumber: { year: y - 1, period: 12, periodType: "MONTHLY", branchNumber } },
-    }),
-    prisma.branchParameters.findUnique({ where: { year_branchNumber: { year: y, branchNumber } } }),
-    prisma.premiumActuals.findMany({
-      where: { year: y, month: { lte: toMonth }, branchNumber },
-      orderBy: { month: "asc" },
-    }),
-    fetchCumulativeClaims(branchNumber, y, toMonth),
-  ]);
-
-  const grossPremium   = allPremiums.reduce((s, p) => s + p.grossPremium,       0);
-  const agentCommPaid  = allPremiums.reduce((s, p) => s + p.agentComm,          0);
-  const riPremiumPaid  = allPremiums.reduce((s, p) => s + p.reinsurancePremium, 0);
-  const riCommReceived = allPremiums.reduce((s, p) => s + p.reinsuranceComm,    0);
-
-  const uprClosing      = Number(closingSnapshot?.uprValue       ?? 0);
-  const uprOpening      = Number(openingSnapshot?.uprValue       ?? 0);
-  const dacClosing      = Number(closingSnapshot?.dacGross       ?? 0);
-  const dacOpening      = Number(openingSnapshot?.dacGross       ?? 0);
-  const riDeferredClose = Number(closingSnapshot?.deferredRIComm ?? 0);
-  const riDeferredOpen  = Number(openingSnapshot?.deferredRIComm ?? 0);
-  const ducNetClosing   = Number(closingSnapshot?.ducNet         ?? 0);
-  const ducNetOpening   = Number(openingSnapshot?.ducNet         ?? 0);
-
-  const earnedGross = grossPremium + uprOpening - uprClosing;
-  const uprRatio    = grossPremium > 0 ? uprClosing / grossPremium : 0;
-
-  const agentCommEarned = agentCommPaid  * (1 - uprRatio);
-  const riPremEarned    = riPremiumPaid  * (1 - uprRatio);
-  const riCommEarned    = riCommReceived * (1 - uprRatio);
-  const reinsuranceCost = riPremEarned - riCommEarned;
-
-  const actualClaims   = claimsData.incurredGross;
-  const expectedClaims = (earnedGross * Number(params?.expectedLrPct ?? 0)) / 100;
-  const claimsToUse    = claimsData.hasData ? actualClaims : expectedClaims;
-  const claimsRi       = claimsData.hasData ? claimsData.incurredRi : claimsToUse * (Number(params?.reinsurancePct ?? 0) / 100);
-
-  const monthlyBreakdown = allPremiums.map(p => ({
-    month: p.month,
-    grossPremium: p.grossPremium,
-    agentComm:    p.agentComm,
-    riPremium:    p.reinsurancePremium,
-    riComm:       p.reinsuranceComm,
-  }));
-
-  return {
-    grossPremium, uprOpening, uprClosing, earnedPremium: earnedGross,
-    agentComm: agentCommEarned, reinsuranceCost,
-    claimsGross: claimsToUse, claimsRi, claimsNet: claimsToUse - claimsRi,
-    claimsDetail: claimsData,
-    expectedClaimsBudget: expectedClaims,
-    uprRatio,
-    dacClosing, dacOpening, riDeferredClose, riDeferredOpen,
-    ducNetClosing, ducNetOpening,
-    agentCommPaid, riPremiumPaid, riCommReceived,
-    monthlyBreakdown,
-    params: params ?? {},
-  };
-}
-
-// ---------------------------------------------------------------------------
 // סיכום נתוני ענפים מרובים לשורה אחת
 // ---------------------------------------------------------------------------
 function sumBranchData(results: any[]) {
   const sum = (key: string) => results.reduce((s, r) => s + (r[key] ?? 0), 0);
 
-  const grossPremium    = sum("grossPremium");
-  const uprClosing      = sum("uprClosing");
-  const uprRatio        = grossPremium > 0 ? uprClosing / grossPremium : 0;
+  const grossPremium = sum("grossPremium");
+  const uprClosing   = sum("uprClosing");
+  const uprRatio     = grossPremium > 0 ? uprClosing / grossPremium : 0;
 
   const claimsDetail = {
     hasData:           results.some(r => r.claimsDetail?.hasData),
@@ -230,7 +23,6 @@ function sumBranchData(results: any[]) {
     actuarialEstRi:    results.reduce((s, r) => s + (r.claimsDetail?.actuarialEstRi    ?? 0), 0),
   };
 
-  // monthly breakdown — סיכום לפי חודש (רלוונטי למצב YTD)
   const monthlyMap = new Map<number, any>();
   for (const r of results) {
     for (const mb of r.monthlyBreakdown ?? []) {
@@ -272,7 +64,7 @@ function sumBranchData(results: any[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Public action
+// Public action — bulk queries במקום N×queries לכל ענף
 // branchNumber === 0  →  כל הענפים (סיכום כולל)
 // ---------------------------------------------------------------------------
 export async function getBranchComparisonReport(
@@ -282,39 +74,214 @@ export async function getBranchComparisonReport(
   mode: "monthly" | "cumulative" = "monthly"
 ) {
   try {
+    // 1. רשימת ענפים
+    let branchNums: number[];
     if (branchNumber === 0) {
-      // שלוף את כל מספרי הענפים
-      const allBranches = await prisma.premiumActuals.findMany({
+      const rows = await prisma.premiumActuals.findMany({
         select: { branchNumber: true },
         distinct: ["branchNumber"],
       });
-      const nums = allBranches.map(b => b.branchNumber);
-
-      const [resultsA, resultsB] = await Promise.all([
-        Promise.all(nums.map(bn =>
-          mode === "cumulative"
-            ? fetchCumulativeData(bn, periodA.year, periodA.month)
-            : fetchPeriodData(bn, periodA.year, periodA.month)
-        )),
-        Promise.all(nums.map(bn =>
-          mode === "cumulative"
-            ? fetchCumulativeData(bn, periodB.year, periodB.month)
-            : fetchPeriodData(bn, periodB.year, periodB.month)
-        )),
-      ]);
-
-      return { success: true, dataA: sumBranchData(resultsA), dataB: sumBranchData(resultsB), mode };
+      branchNums = rows.map(r => r.branchNumber);
+    } else {
+      branchNums = [branchNumber];
     }
 
-    const [dataA, dataB] = await Promise.all([
-      mode === "cumulative"
-        ? fetchCumulativeData(branchNumber, periodA.year, periodA.month)
-        : fetchPeriodData(branchNumber, periodA.year, periodA.month),
-      mode === "cumulative"
-        ? fetchCumulativeData(branchNumber, periodB.year, periodB.month)
-        : fetchPeriodData(branchNumber, periodB.year, periodB.month),
+    // 2. תקופות פתיחה
+    // monthly: חודש קודם (או דצמבר שנה קודמת אם ינואר)
+    // cumulative: תמיד דצמבר שנה קודמת
+    const openA = (mode === "cumulative" || periodA.month === 1)
+      ? { year: periodA.year - 1, month: 12 }
+      : { year: periodA.year,     month: periodA.month - 1 };
+    const openB = (mode === "cumulative" || periodB.month === 1)
+      ? { year: periodB.year - 1, month: 12 }
+      : { year: periodB.year,     month: periodB.month - 1 };
+
+    // 3. תקופות snapshot ייחודיות לשליפה אחת
+    const snapshotPeriods = [
+      { year: periodA.year, month: periodA.month },
+      { year: openA.year,   month: openA.month   },
+      { year: periodB.year, month: periodB.month },
+      { year: openB.year,   month: openB.month   },
+    ].filter((p, i, arr) => arr.findIndex(x => x.year === p.year && x.month === p.month) === i);
+
+    // 4. שליפת כל הנתונים במקביל — ~8 queries ללא קשר למספר הענפים
+    const paramYears = [...new Set([periodA.year, periodB.year])];
+
+    const [
+      allSnapshots,
+      allParams,
+      premiumsA, premiumsB,
+      claimsA,   claimsB,
+      actuarialA, actuarialB,
+    ] = await Promise.all([
+      prisma.uprSnapshot.findMany({
+        where: {
+          periodType: "MONTHLY",
+          OR: snapshotPeriods.map(p => ({ year: p.year, period: p.month })),
+        },
+      }),
+      prisma.branchParameters.findMany({
+        where: { year: { in: paramYears } },
+      }),
+      prisma.premiumActuals.findMany({
+        where: mode === "cumulative"
+          ? { year: periodA.year, month: { lte: periodA.month } }
+          : { year: periodA.year, month: periodA.month },
+      }),
+      prisma.premiumActuals.findMany({
+        where: mode === "cumulative"
+          ? { year: periodB.year, month: { lte: periodB.month } }
+          : { year: periodB.year, month: periodB.month },
+      }),
+      prisma.claimsActuals.findMany({
+        where: mode === "cumulative"
+          ? { year: periodA.year, month: { lte: periodA.month } }
+          : { year: periodA.year, month: periodA.month },
+      }),
+      prisma.claimsActuals.findMany({
+        where: mode === "cumulative"
+          ? { year: periodB.year, month: { lte: periodB.month } }
+          : { year: periodB.year, month: periodB.month },
+      }),
+      prisma.actuarialEstimate.findMany({ where: { year: periodA.year, month: periodA.month } }),
+      prisma.actuarialEstimate.findMany({ where: { year: periodB.year, month: periodB.month } }),
     ]);
-    return { success: true, dataA, dataB, mode };
+
+    // 5. מפות לחיפוש מהיר
+    const snapshotKey = (y: number, m: number, bn: number) => `${y}-${m}-${bn}`;
+    const snapshotMap = new Map(allSnapshots.map(s => [snapshotKey(s.year, s.period, s.branchNumber), s]));
+    const paramsMap   = new Map(allParams.map(p => [`${p.year}-${p.branchNumber}`, p]));
+
+    // 6. חישוב לענף בודד מתוך הנתונים הטעונים מראש
+    const computeBranch = (
+      bn: number,
+      period: { year: number; month: number },
+      opening: { year: number; month: number },
+      premiums: typeof premiumsA,
+      claims:   typeof claimsA,
+      actuarial: typeof actuarialA,
+    ) => {
+      const closingSnapshot = snapshotMap.get(snapshotKey(period.year, period.month, bn));
+      const openingSnapshot = snapshotMap.get(snapshotKey(opening.year, opening.month, bn));
+      const params          = paramsMap.get(`${period.year}-${bn}`);
+
+      const branchPremiums  = premiums.filter(p => p.branchNumber === bn);
+      const branchClaims    = claims.filter(c => c.branchNumber === bn);
+      const branchActuarial = actuarial.filter(a => a.branchNumber === bn);
+
+      let grossPremium: number, agentCommPaid: number, riPremiumPaid: number, riCommReceived: number;
+      if (mode === "cumulative") {
+        grossPremium   = branchPremiums.reduce((s, p) => s + p.grossPremium,       0);
+        agentCommPaid  = branchPremiums.reduce((s, p) => s + p.agentComm,          0);
+        riPremiumPaid  = branchPremiums.reduce((s, p) => s + p.reinsurancePremium, 0);
+        riCommReceived = branchPremiums.reduce((s, p) => s + p.reinsuranceComm,    0);
+      } else {
+        const prem     = branchPremiums[0];
+        grossPremium   = prem?.grossPremium       ?? 0;
+        agentCommPaid  = prem?.agentComm          ?? 0;
+        riPremiumPaid  = prem?.reinsurancePremium ?? 0;
+        riCommReceived = prem?.reinsuranceComm    ?? 0;
+      }
+
+      const uprClosing      = Number(closingSnapshot?.uprValue       ?? 0);
+      const uprOpening      = Number(openingSnapshot?.uprValue       ?? 0);
+      const dacClosing      = Number(closingSnapshot?.dacGross       ?? 0);
+      const dacOpening      = Number(openingSnapshot?.dacGross       ?? 0);
+      const riDeferredClose = Number(closingSnapshot?.deferredRIComm ?? 0);
+      const riDeferredOpen  = Number(openingSnapshot?.deferredRIComm ?? 0);
+      const ducNetClosing   = Number(closingSnapshot?.ducNet         ?? 0);
+      const ducNetOpening   = Number(openingSnapshot?.ducNet         ?? 0);
+
+      const earnedGross = grossPremium + uprOpening - uprClosing;
+      const uprRatio    = grossPremium > 0 ? uprClosing / grossPremium : 0;
+
+      const claimsPaidGross   = branchClaims.reduce((s, c) => s + c.claimsPaidGross,           0);
+      const claimsPaidRi      = branchClaims.reduce((s, c) => s + c.claimsPaidRi,              0);
+      const outstandingGross  = branchActuarial.reduce((s, a) => s + a.outstandingClaimsGross, 0);
+      const outstandingRi     = branchActuarial.reduce((s, a) => s + a.outstandingClaimsRi,    0);
+      const ibnrGross         = branchActuarial.reduce((s, a) => s + a.ibnrGross,              0);
+      const ibnrRi            = branchActuarial.reduce((s, a) => s + a.ibnrRi,                 0);
+      const actuarialEstGross = branchActuarial.reduce((s, a) => s + a.actuarialEstimateGross, 0);
+      const actuarialEstRi    = branchActuarial.reduce((s, a) => s + a.actuarialEstimateRi,    0);
+      const incurredGross     = claimsPaidGross + outstandingGross + ibnrGross;
+      const incurredRi        = claimsPaidRi    + outstandingRi    + ibnrRi;
+      const hasData           = branchClaims.length > 0 || branchActuarial.length > 0;
+
+      const claimsDetail = {
+        hasData,
+        claimsPaidGross, claimsPaidRi,
+        outstandingGross, outstandingRi,
+        ibnrGross, ibnrRi,
+        actuarialEstGross, actuarialEstRi,
+        incurredGross, incurredRi,
+        incurredNet: incurredGross - incurredRi,
+      };
+
+      let agentCommEarned: number, riPremEarned: number, riCommEarned: number;
+      if (mode === "cumulative") {
+        agentCommEarned = agentCommPaid  * (1 - uprRatio);
+        riPremEarned    = riPremiumPaid  * (1 - uprRatio);
+        riCommEarned    = riCommReceived * (1 - uprRatio);
+      } else {
+        agentCommEarned = agentCommPaid > 0
+          ? agentCommPaid * (1 - uprRatio)
+          : (earnedGross * Number(params?.agentCommPct ?? 0)) / 100;
+        riPremEarned = riPremiumPaid > 0
+          ? riPremiumPaid * (1 - uprRatio)
+          : (earnedGross * Number(params?.reinsurancePct ?? 0)) / 100;
+        riCommEarned = riCommReceived > 0
+          ? riCommReceived * (1 - uprRatio)
+          : riPremEarned * (Number(params?.reinsuranceCommPct ?? 0) / 100);
+      }
+      const reinsuranceCost = riPremEarned - riCommEarned;
+
+      const expectedClaims = (earnedGross * Number(params?.expectedLrPct ?? 0)) / 100;
+      const claimsToUse    = hasData ? incurredGross : expectedClaims;
+      const claimsRi       = hasData ? incurredRi    : claimsToUse * (Number(params?.reinsurancePct ?? 0) / 100);
+
+      const monthlyBreakdown = mode === "cumulative"
+        ? branchPremiums.map(p => ({
+            month:        p.month,
+            grossPremium: p.grossPremium,
+            agentComm:    p.agentComm,
+            riPremium:    p.reinsurancePremium,
+            riComm:       p.reinsuranceComm,
+          }))
+        : undefined;
+
+      return {
+        grossPremium, uprOpening, uprClosing, earnedPremium: earnedGross,
+        agentComm: agentCommEarned, reinsuranceCost,
+        claimsGross: claimsToUse, claimsRi, claimsNet: claimsToUse - claimsRi,
+        claimsDetail,
+        expectedClaimsBudget: expectedClaims,
+        uprRatio,
+        dacClosing, dacOpening, riDeferredClose, riDeferredOpen,
+        ducNetClosing, ducNetOpening,
+        agentCommPaid, riPremiumPaid, riCommReceived,
+        ...(monthlyBreakdown ? { monthlyBreakdown } : {}),
+        params: params ?? {},
+      };
+    };
+
+    // N3: flag אם נתוני אקטואריה חסרים לתקופה (בד"כ קיימים רק ברבעון)
+    const actuarialWarningA = actuarialA.length === 0
+      ? "נתונים אקטואריים חסרים ל-" + periodA.month + "/" + periodA.year + " — ניתוח Variance חלקי בלבד (זמין בדרך כלל ברבעון)"
+      : null;
+    const actuarialWarningB = actuarialB.length === 0
+      ? "נתונים אקטואריים חסרים ל-" + periodB.month + "/" + periodB.year + " — ניתוח Variance חלקי בלבד (זמין בדרך כלל ברבעון)"
+      : null;
+
+    if (branchNumber === 0) {
+      const resultsA = branchNums.map(bn => computeBranch(bn, periodA, openA, premiumsA, claimsA, actuarialA));
+      const resultsB = branchNums.map(bn => computeBranch(bn, periodB, openB, premiumsB, claimsB, actuarialB));
+      return { success: true, dataA: sumBranchData(resultsA), dataB: sumBranchData(resultsB), mode, actuarialWarningA, actuarialWarningB };
+    }
+
+    const dataA = computeBranch(branchNumber, periodA, openA, premiumsA, claimsA, actuarialA);
+    const dataB = computeBranch(branchNumber, periodB, openB, premiumsB, claimsB, actuarialB);
+    return { success: true, dataA, dataB, mode, actuarialWarningA, actuarialWarningB };
+
   } catch (error: any) {
     return { success: false, error: error.message };
   }
