@@ -2,6 +2,151 @@
 import { prisma } from "@/lib/prisma";
 
 // ---------------------------------------------------------------------------
+// דוח מטריצה: כל הענפים כעמודות, מרכיבי P&L כשורות — מצטבר YTD
+// ---------------------------------------------------------------------------
+export async function getBranchMatrixReport(year: number, toMonth: number, groupCode?: string) {
+  try {
+    const [branchRows, branchMeta] = await Promise.all([
+      prisma.premiumActuals.findMany({
+        select: { branchNumber: true },
+        distinct: ["branchNumber"],
+        where: { year, month: { lte: toMonth } },
+      }),
+      prisma.branch.findMany({ orderBy: [{ groupCode: "asc" }, { branchNumber: "asc" }] }),
+    ]);
+
+    const metaMap = new Map(branchMeta.map(b => [b.branchNumber, b]));
+    const allNums = branchRows.map(b => b.branchNumber).sort((a, b) => a - b);
+    const nums = groupCode
+      ? allNums.filter(bn => metaMap.get(bn)?.groupCode === groupCode)
+      : allNums;
+
+    const results = await Promise.all(
+      nums.map(async bn => {
+        const data = await fetchCumulativeData(bn, year, toMonth);
+        const meta = metaMap.get(bn);
+        return {
+          branchNumber: bn,
+          branchName:   meta?.branchName  ?? `ענף ${bn}`,
+          groupCode:    meta?.groupCode   ?? "",
+          groupName:    meta?.groupName   ?? "",
+          ...data,
+        };
+      })
+    );
+
+    return { success: true, branches: results };
+  } catch (e: any) {
+    return { success: false, error: e.message, branches: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// תביעות מצטברות YTD
+// ---------------------------------------------------------------------------
+async function fetchCumulativeClaims(branchNumber: number, y: number, toMonth: number) {
+  // שולמו: סכום כל החודשים 1..toMonth
+  const claims = await prisma.claimsActuals.findMany({
+    where: { year: y, month: { lte: toMonth }, branchNumber },
+  });
+  // אקטואריה: נכון לסוף התקופה (החודש האחרון הזמין ≤ toMonth)
+  const actuarial = await prisma.actuarialEstimate.findMany({
+    where: { year: y, month: toMonth, branchNumber },
+  });
+
+  const claimsPaidGross  = claims.reduce((s, r) => s + r.claimsPaidGross,           0);
+  const claimsPaidRi     = claims.reduce((s, r) => s + r.claimsPaidRi,              0);
+  const outstandingGross = actuarial.reduce((s, r) => s + r.outstandingClaimsGross, 0);
+  const outstandingRi    = actuarial.reduce((s, r) => s + r.outstandingClaimsRi,    0);
+  const ibnrGross        = actuarial.reduce((s, r) => s + r.ibnrGross,              0);
+  const ibnrRi           = actuarial.reduce((s, r) => s + r.ibnrRi,                 0);
+  const actuarialEstGross = actuarial.reduce((s, r) => s + r.actuarialEstimateGross, 0);
+  const actuarialEstRi    = actuarial.reduce((s, r) => s + r.actuarialEstimateRi,    0);
+
+  const incurredGross = claimsPaidGross + outstandingGross + ibnrGross;
+  const incurredRi    = claimsPaidRi    + outstandingRi    + ibnrRi;
+
+  return {
+    claimsPaidGross, claimsPaidRi,
+    outstandingGross, outstandingRi,
+    ibnrGross, ibnrRi,
+    actuarialEstGross, actuarialEstRi,
+    incurredGross, incurredRi,
+    incurredNet: incurredGross - incurredRi,
+    hasData: claims.length > 0 || actuarial.length > 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// נתונים מצטברים YTD
+// ---------------------------------------------------------------------------
+async function fetchCumulativeData(branchNumber: number, y: number, toMonth: number) {
+  const [closingSnapshot, openingSnapshot, params, allPremiums, claimsData] = await Promise.all([
+    prisma.uprSnapshot.findUnique({
+      where: { year_period_periodType_branchNumber: { year: y, period: toMonth, periodType: "MONTHLY", branchNumber } },
+    }),
+    prisma.uprSnapshot.findUnique({
+      where: { year_period_periodType_branchNumber: { year: y - 1, period: 12, periodType: "MONTHLY", branchNumber } },
+    }),
+    prisma.branchParameters.findUnique({ where: { year_branchNumber: { year: y, branchNumber } } }),
+    prisma.premiumActuals.findMany({
+      where: { year: y, month: { lte: toMonth }, branchNumber },
+      orderBy: { month: "asc" },
+    }),
+    fetchCumulativeClaims(branchNumber, y, toMonth),
+  ]);
+
+  const grossPremium   = allPremiums.reduce((s, p) => s + p.grossPremium,       0);
+  const agentCommPaid  = allPremiums.reduce((s, p) => s + p.agentComm,          0);
+  const riPremiumPaid  = allPremiums.reduce((s, p) => s + p.reinsurancePremium, 0);
+  const riCommReceived = allPremiums.reduce((s, p) => s + p.reinsuranceComm,    0);
+
+  const uprClosing      = Number(closingSnapshot?.uprValue       ?? 0);
+  const uprOpening      = Number(openingSnapshot?.uprValue       ?? 0);
+  const dacClosing      = Number(closingSnapshot?.dacGross       ?? 0);
+  const dacOpening      = Number(openingSnapshot?.dacGross       ?? 0);
+  const riDeferredClose = Number(closingSnapshot?.deferredRIComm ?? 0);
+  const riDeferredOpen  = Number(openingSnapshot?.deferredRIComm ?? 0);
+  const ducNetClosing   = Number(closingSnapshot?.ducNet         ?? 0);
+  const ducNetOpening   = Number(openingSnapshot?.ducNet         ?? 0);
+
+  const earnedGross = grossPremium + uprOpening - uprClosing;
+  const uprRatio    = grossPremium > 0 ? uprClosing / grossPremium : 0;
+
+  const agentCommEarned = agentCommPaid  * (1 - uprRatio);
+  const riPremEarned    = riPremiumPaid  * (1 - uprRatio);
+  const riCommEarned    = riCommReceived * (1 - uprRatio);
+  const reinsuranceCost = riPremEarned - riCommEarned;
+
+  const actualClaims   = claimsData.incurredGross;
+  const expectedClaims = (earnedGross * Number(params?.expectedLrPct ?? 0)) / 100;
+  const claimsToUse    = claimsData.hasData ? actualClaims : expectedClaims;
+  const claimsRi       = claimsData.hasData ? claimsData.incurredRi : claimsToUse * (Number(params?.reinsurancePct ?? 0) / 100);
+
+  const monthlyBreakdown = allPremiums.map(p => ({
+    month: p.month,
+    grossPremium: p.grossPremium,
+    agentComm:    p.agentComm,
+    riPremium:    p.reinsurancePremium,
+    riComm:       p.reinsuranceComm,
+  }));
+
+  return {
+    grossPremium, uprOpening, uprClosing, earnedPremium: earnedGross,
+    agentComm: agentCommEarned, reinsuranceCost,
+    claimsGross: claimsToUse, claimsRi, claimsNet: claimsToUse - claimsRi,
+    claimsDetail: claimsData,
+    expectedClaimsBudget: expectedClaims,
+    uprRatio,
+    dacClosing, dacOpening, riDeferredClose, riDeferredOpen,
+    ducNetClosing, ducNetOpening,
+    agentCommPaid, riPremiumPaid, riCommReceived,
+    monthlyBreakdown,
+    params: params ?? {},
+  };
+}
+
+// ---------------------------------------------------------------------------
 // סיכום נתוני ענפים מרובים לשורה אחת
 // ---------------------------------------------------------------------------
 function sumBranchData(results: any[]) {
@@ -65,22 +210,24 @@ function sumBranchData(results: any[]) {
 
 // ---------------------------------------------------------------------------
 // Public action — bulk queries במקום N×queries לכל ענף
-// branchNumber === 0  →  כל הענפים (סיכום כולל)
+// branchNumber === 0 && !groupCode  →  כל הענפים (סיכום כולל)
+// branchNumber === 0 && groupCode   →  ענף מרכז (סיכום לפי קבוצה)
 // ---------------------------------------------------------------------------
 export async function getBranchComparisonReport(
   branchNumber: number,
   periodA: { year: number; month: number },
   periodB: { year: number; month: number },
-  mode: "monthly" | "cumulative" = "monthly"
+  mode: "monthly" | "cumulative" = "monthly",
+  groupCode?: string
 ) {
   try {
     // 1. רשימת ענפים
     let branchNums: number[];
     if (branchNumber === 0) {
-      const rows = await prisma.premiumActuals.findMany({
-        select: { branchNumber: true },
-        distinct: ["branchNumber"],
-      });
+      // ענפים לפי קבוצה (ענף מרכז) או את כולם
+      const rows = groupCode
+        ? await prisma.branch.findMany({ where: { groupCode }, select: { branchNumber: true } })
+        : await prisma.premiumActuals.findMany({ select: { branchNumber: true }, distinct: ["branchNumber"] });
       branchNums = rows.map(r => r.branchNumber);
     } else {
       branchNums = [branchNumber];
